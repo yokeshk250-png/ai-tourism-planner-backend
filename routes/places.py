@@ -1,19 +1,21 @@
+import logging
 from fastapi import APIRouter, Query, HTTPException
 from models.schemas import PlaceSearchResponse, PlaceEnrichRequest, PlaceEnrichResponse
 from services.places_service import search_places, get_place_details
 from services.llm_service import enrich_place_with_perplexity
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────
 # GET /api/places/search
-# Search tourist places via Foursquare → Geoapify → OpenTripMap
-# ─────────────────────────────────────────────────────────────
+# Search via Foursquare → Geoapify → OpenTripMap
+# ─────────────────────────────────────────
 @router.get("/search", response_model=PlaceSearchResponse)
 async def search_tourist_places(
     destination: str = Query(..., description="City name e.g. Chennai"),
-    category: str = Query("tourist_attraction", description="Category: temple, beach, museum, park"),
+    category: str = Query("tourist_attraction", description="temple, beach, museum, park, food"),
     limit: int = Query(10, ge=1, le=30)
 ):
     try:
@@ -26,30 +28,14 @@ async def search_tourist_places(
             places=places
         )
     except Exception as e:
+        logger.error(f"[places/search] {type(e).__name__}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ─────────────────────────────────────────────────────────────
-# GET /api/places/{place_id}
-# Get full place details from Foursquare
-# ─────────────────────────────────────────────────────────────
-@router.get("/{place_id}")
-async def get_place(place_id: str):
-    try:
-        place = await get_place_details(place_id)
-        if not place:
-            raise HTTPException(status_code=404, detail="Place not found")
-        return {"success": True, "place": place}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────
 # POST /api/places/enrich
-# Use Perplexity to get real-time place info
-# ─────────────────────────────────────────────────────────────
+# Use Groq to get real-time place info
+# ─────────────────────────────────────────
 @router.post("/enrich", response_model=PlaceEnrichResponse)
 async def enrich_place(req: PlaceEnrichRequest):
     try:
@@ -60,4 +46,23 @@ async def enrich_place(req: PlaceEnrichRequest):
             **data
         )
     except Exception as e:
+        logger.error(f"[places/enrich] {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─────────────────────────────────────────
+# GET /api/places/{place_id}
+# Get full Foursquare place details
+# ─────────────────────────────────────────
+@router.get("/{place_id}")
+async def get_place(place_id: str):
+    try:
+        place = await get_place_details(place_id)
+        if not place:
+            raise HTTPException(status_code=404, detail="Place not found")
+        return {"success": True, "place": place}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[places/id] {type(e).__name__}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

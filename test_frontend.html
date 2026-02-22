@@ -5,748 +5,492 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI Tourism Planner — API Tester</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
-      min-height: 100vh;
-    }
-
-    header {
-      background: linear-gradient(135deg, #1e40af, #7c3aed);
-      padding: 24px 32px;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-    header h1 { font-size: 1.6rem; font-weight: 700; color: #fff; }
-    header span { font-size: 1.8rem; }
-    .badge {
-      background: #22d3ee22;
-      border: 1px solid #22d3ee55;
-      color: #22d3ee;
-      font-size: 0.75rem;
-      padding: 3px 10px;
-      border-radius: 99px;
-      margin-left: 8px;
-    }
-
-    .container { max-width: 1100px; margin: 0 auto; padding: 32px 20px; }
-
-    /* Tabs */
-    .tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 24px;
-      flex-wrap: wrap;
-    }
-    .tab-btn {
-      padding: 9px 20px;
-      border-radius: 8px;
-      border: 1px solid #334155;
-      background: #1e293b;
-      color: #94a3b8;
-      cursor: pointer;
-      font-size: 0.9rem;
-      transition: all 0.2s;
-    }
-    .tab-btn.active {
-      background: #1e40af;
-      border-color: #3b82f6;
-      color: #fff;
-    }
-    .tab-btn:hover:not(.active) { border-color: #64748b; color: #e2e8f0; }
-
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
-
-    /* Card */
-    .card {
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 20px;
-    }
-    .card h2 {
-      font-size: 1.1rem;
-      font-weight: 600;
-      color: #f1f5f9;
-      margin-bottom: 18px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    /* Form */
-    .form-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-      margin-bottom: 18px;
-    }
-    @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
-
-    .form-group label {
-      display: block;
-      font-size: 0.8rem;
-      color: #94a3b8;
-      margin-bottom: 6px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    .form-group input,
-    .form-group select,
-    .form-group textarea {
-      width: 100%;
-      background: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 10px 12px;
-      color: #e2e8f0;
-      font-size: 0.95rem;
-      outline: none;
-      transition: border 0.2s;
-    }
-    .form-group input:focus,
-    .form-group select:focus,
-    .form-group textarea:focus { border-color: #3b82f6; }
-    .form-group.full { grid-column: 1 / -1; }
-
-    /* Checkbox group */
-    .checkbox-group {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 4px;
-    }
-    .checkbox-group label {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      background: #0f172a;
-      border: 1px solid #334155;
-      padding: 6px 12px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 0.85rem;
-      color: #cbd5e1;
-      text-transform: none;
-      letter-spacing: 0;
-    }
-    .checkbox-group input[type=checkbox] { accent-color: #3b82f6; }
-    .checkbox-group input[type=checkbox]:checked + span { color: #60a5fa; }
-
-    /* Buttons */
-    .btn {
-      padding: 11px 24px;
-      border-radius: 8px;
-      border: none;
-      cursor: pointer;
-      font-size: 0.95rem;
-      font-weight: 600;
-      transition: all 0.2s;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .btn-primary { background: #2563eb; color: #fff; }
-    .btn-primary:hover { background: #1d4ed8; }
-    .btn-primary:disabled { background: #1e40af; opacity: 0.6; cursor: not-allowed; }
-    .btn-secondary { background: #334155; color: #e2e8f0; }
-    .btn-secondary:hover { background: #475569; }
-
-    /* Status */
-    .status-bar {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 14px;
-      border-radius: 8px;
-      margin-bottom: 16px;
-      font-size: 0.85rem;
-    }
-    .status-bar.success { background: #14532d33; border: 1px solid #16a34a55; color: #4ade80; }
-    .status-bar.error   { background: #7f1d1d33; border: 1px solid #dc262655; color: #f87171; }
-    .status-bar.loading { background: #1e3a5f33; border: 1px solid #3b82f655; color: #60a5fa; }
-    .status-bar.hidden  { display: none; }
-
-    /* Spinner */
-    .spinner {
-      width: 16px; height: 16px;
-      border: 2px solid #60a5fa44;
-      border-top-color: #60a5fa;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* Response box */
-    .response-box {
-      background: #020617;
-      border: 1px solid #334155;
-      border-radius: 10px;
-      padding: 18px;
-      overflow-x: auto;
-    }
-    .response-box pre {
-      font-family: 'Consolas', monospace;
-      font-size: 0.82rem;
-      color: #a5f3fc;
-      white-space: pre-wrap;
-      word-break: break-word;
-      line-height: 1.6;
-    }
-
-    /* Itinerary cards */
-    .itinerary-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 14px;
-      margin-top: 16px;
-    }
-    .stop-card {
-      background: #0f172a;
-      border: 1px solid #1e40af55;
-      border-left: 3px solid #3b82f6;
-      border-radius: 10px;
-      padding: 14px 16px;
-    }
-    .stop-card .stop-time {
-      font-size: 0.75rem;
-      color: #60a5fa;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .stop-card .stop-name {
-      font-size: 1rem;
-      font-weight: 700;
-      color: #f1f5f9;
-      margin: 4px 0;
-    }
-    .stop-card .stop-meta {
-      font-size: 0.8rem;
-      color: #64748b;
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin: 6px 0;
-    }
-    .stop-card .stop-tip {
-      font-size: 0.8rem;
-      color: #a78bfa;
-      font-style: italic;
-      margin-top: 6px;
-      padding-top: 6px;
-      border-top: 1px solid #1e293b;
-    }
-    .day-badge {
-      display: inline-block;
-      background: #1e40af;
-      color: #bfdbfe;
-      font-size: 0.7rem;
-      padding: 2px 8px;
-      border-radius: 99px;
-      margin-bottom: 4px;
-    }
-
-    /* Warning banner */
-    .warning-banner {
-      background: #78350f22;
-      border: 1px solid #d97706;
-      color: #fbbf24;
-      padding: 10px 14px;
-      border-radius: 8px;
-      font-size: 0.85rem;
-      margin-bottom: 12px;
-    }
-
-    /* Base URL bar */
-    .url-bar {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 10px 14px;
-      margin-bottom: 24px;
-    }
-    .url-bar label { font-size: 0.8rem; color: #94a3b8; white-space: nowrap; }
-    .url-bar input {
-      flex: 1;
-      background: transparent;
-      border: none;
-      color: #60a5fa;
-      font-size: 0.95rem;
-      outline: none;
-    }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
+    header{background:linear-gradient(135deg,#1a1f2e,#252d3d);padding:20px 32px;border-bottom:1px solid #2d3748;display:flex;align-items:center;gap:14px}
+    header h1{font-size:1.4rem;font-weight:700;color:#fff}header span{font-size:.8rem;background:#3b82f6;color:#fff;padding:2px 10px;border-radius:99px}
+    .status-bar{display:flex;align-items:center;gap:10px;padding:10px 32px;background:#161b27;border-bottom:1px solid #2d3748;font-size:.8rem}
+    #statusDot{width:10px;height:10px;border-radius:50%;background:#ef4444;flex-shrink:0}
+    #statusDot.on{background:#22c55e}
+    #statusText{color:#94a3b8}
+    .ping-btn{margin-left:auto;background:#1e293b;border:1px solid #334155;color:#94a3b8;padding:4px 14px;border-radius:6px;cursor:pointer;font-size:.78rem}
+    .ping-btn:hover{background:#334155}
+    .tabs{display:flex;gap:0;padding:0 32px;background:#161b27;border-bottom:1px solid #2d3748;overflow-x:auto}
+    .tab{padding:12px 22px;cursor:pointer;font-size:.85rem;color:#64748b;border-bottom:2px solid transparent;white-space:nowrap;transition:.2s}
+    .tab.active{color:#3b82f6;border-bottom-color:#3b82f6;font-weight:600}
+    .tab:hover:not(.active){color:#94a3b8}
+    main{padding:28px 32px;max-width:1000px}
+    .panel{display:none}.panel.active{display:block}
+    .card{background:#1a1f2e;border:1px solid #2d3748;border-radius:12px;padding:24px;margin-bottom:20px}
+    .card h2{font-size:1rem;font-weight:600;margin-bottom:18px;color:#e2e8f0;display:flex;align-items:center;gap:8px}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+    .form-row.single{grid-template-columns:1fr}
+    .form-row.triple{grid-template-columns:1fr 1fr 1fr}
+    label{font-size:.78rem;color:#94a3b8;display:block;margin-bottom:5px}
+    input,select,textarea{width:100%;background:#0f1117;border:1px solid #334155;color:#e2e8f0;padding:9px 12px;border-radius:8px;font-size:.85rem;outline:none;transition:.2s}
+    input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.15)}
+    .checkbox-group{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+    .checkbox-group label{display:flex;align-items:center;gap:6px;cursor:pointer;color:#e2e8f0;font-size:.82rem;background:#0f1117;border:1px solid #334155;padding:5px 11px;border-radius:6px;margin:0}
+    .checkbox-group input[type=checkbox]{width:auto;margin:0}
+    .btn{background:#3b82f6;color:#fff;border:none;padding:10px 22px;border-radius:8px;cursor:pointer;font-size:.88rem;font-weight:600;display:inline-flex;align-items:center;gap:8px;transition:.2s}
+    .btn:hover{background:#2563eb}.btn:disabled{opacity:.5;cursor:not-allowed}
+    .btn.secondary{background:#1e293b;border:1px solid #334155;color:#94a3b8}
+    .btn.secondary:hover{background:#334155}
+    .result-box{margin-top:20px}
+    .result-box h3{font-size:.8rem;color:#64748b;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em}
+    .result-meta{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+    .badge{font-size:.72rem;padding:3px 10px;border-radius:99px;font-weight:600}
+    .badge.success{background:#064e3b;color:#34d399}.badge.error{background:#450a0a;color:#f87171}
+    .badge.info{background:#1e3a5f;color:#93c5fd}.badge.warn{background:#451a03;color:#fb923c}
+    .warning-banner{background:#451a03;border:1px solid #92400e;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.82rem;color:#fb923c}
+    .itinerary-days{display:flex;flex-direction:column;gap:16px}
+    .day-header{font-size:.9rem;font-weight:700;color:#3b82f6;padding:8px 0 4px;border-bottom:1px solid #1e293b;margin-bottom:8px}
+    .stops-grid{display:flex;flex-direction:column;gap:8px}
+    .stop-card{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:12px 14px;display:grid;grid-template-columns:50px 1fr auto;gap:10px;align-items:start}
+    .stop-time{color:#3b82f6;font-weight:700;font-size:.85rem;font-family:monospace}
+    .stop-name{font-weight:600;font-size:.9rem;color:#e2e8f0}
+    .stop-meta{font-size:.75rem;color:#64748b;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+    .stop-tip{font-size:.75rem;color:#94a3b8;margin-top:5px;font-style:italic}
+    .stop-fee{font-size:.75rem;padding:2px 8px;border-radius:99px;background:#1e3a5f;color:#93c5fd;white-space:nowrap}
+    .places-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+    .place-card{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:14px}
+    .place-name{font-weight:600;font-size:.88rem;margin-bottom:4px}
+    .place-meta{font-size:.73rem;color:#64748b}
+    .enrich-result{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .enrich-item{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px}
+    .enrich-label{font-size:.7rem;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+    .enrich-value{font-size:.88rem;color:#e2e8f0;font-weight:500}
+    .weather-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+    .weather-card{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:12px;text-align:center}
+    .weather-date{font-size:.75rem;color:#64748b;margin-bottom:6px}
+    .weather-temp{font-size:1.1rem;font-weight:700;color:#e2e8f0}
+    .weather-condition{font-size:.75rem;color:#94a3b8;margin-top:4px}
+    .raw-toggle{font-size:.75rem;color:#3b82f6;cursor:pointer;margin-top:12px;display:inline-block}
+    .raw-json{margin-top:8px;background:#0a0e18;border:1px solid #1e293b;border-radius:8px;padding:14px;font-family:monospace;font-size:.75rem;white-space:pre-wrap;color:#86efac;max-height:350px;overflow-y:auto;display:none}
+    .spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .no-result{color:#475569;font-size:.85rem;text-align:center;padding:30px 0}
   </style>
 </head>
 <body>
 
 <header>
-  <span>🗺️</span>
-  <h1>AI Tourism Planner <span class="badge">API Tester</span></h1>
+  <div style="font-size:1.5rem">🗺️</div>
+  <h1>AI Tourism Planner</h1>
+  <span>v2.2.0</span>
+  <span style="background:#7c3aed">Groq</span>
+  <span style="background:#0f766e">Llama 3.3 70B</span>
 </header>
 
-<div class="container">
-
-  <!-- Base URL -->
-  <div class="url-bar">
-    <div class="dot"></div>
-    <label>API Base URL:</label>
-    <input type="text" id="baseUrl" value="http://localhost:8000" />
-    <button class="btn btn-secondary" style="padding:6px 14px;font-size:0.82rem" onclick="pingHealth()">Ping</button>
-  </div>
-
-  <!-- Tabs -->
-  <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('itinerary', this)">🗓️ Generate Itinerary</button>
-    <button class="tab-btn" onclick="switchTab('places', this)">📍 Search Places</button>
-    <button class="tab-btn" onclick="switchTab('enrich', this)">✨ Enrich Place</button>
-    <button class="tab-btn" onclick="switchTab('weather', this)">⛅ Weather</button>
-    <button class="tab-btn" onclick="switchTab('raw', this)">🧪 Raw API</button>
-  </div>
-
-  <!-- ══════════════════════════════════════════ -->
-  <!-- TAB 1: Generate Itinerary                 -->
-  <!-- ══════════════════════════════════════════ -->
-  <div class="tab-panel active" id="tab-itinerary">
-    <div class="card">
-      <h2>🤖 Generate AI Itinerary <small style="font-size:0.75rem;color:#64748b;font-weight:400;margin-left:4px">POST /api/itinerary/generate</small></h2>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Destination</label>
-          <input type="text" id="g-destination" value="Chennai" placeholder="e.g. Chennai" />
-        </div>
-        <div class="form-group">
-          <label>Days</label>
-          <input type="number" id="g-days" value="2" min="1" max="14" />
-        </div>
-        <div class="form-group">
-          <label>Budget</label>
-          <select id="g-budget">
-            <option value="low">Low 💰</option>
-            <option value="medium" selected>Medium 💳</option>
-            <option value="high">High 💸</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Travel Type</label>
-          <select id="g-travel_type">
-            <option value="solo">Solo</option>
-            <option value="couple">Couple</option>
-            <option value="family" selected>Family</option>
-            <option value="group">Group</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Mood / Theme</label>
-          <select id="g-mood">
-            <option value="cultural" selected>Cultural</option>
-            <option value="relaxed">Relaxed</option>
-            <option value="adventure">Adventure</option>
-            <option value="spiritual">Spiritual</option>
-            <option value="romantic">Romantic</option>
-            <option value="foodie">Foodie</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Travel Date</label>
-          <input type="date" id="g-travel_dates" />
-        </div>
-        <div class="form-group full">
-          <label>Interests</label>
-          <div class="checkbox-group">
-            <label><input type="checkbox" value="temples" checked /><span>Temples</span></label>
-            <label><input type="checkbox" value="beach" checked /><span>Beach</span></label>
-            <label><input type="checkbox" value="history" checked /><span>History</span></label>
-            <label><input type="checkbox" value="museum" /><span>Museum</span></label>
-            <label><input type="checkbox" value="nature" /><span>Nature</span></label>
-            <label><input type="checkbox" value="food" /><span>Food</span></label>
-            <label><input type="checkbox" value="shopping" /><span>Shopping</span></label>
-          </div>
-        </div>
-      </div>
-      <button class="btn btn-primary" id="g-btn" onclick="generateItinerary()">
-        ⚡ Generate Itinerary
-      </button>
-    </div>
-
-    <div class="status-bar hidden" id="g-status"></div>
-
-    <!-- Itinerary cards output -->
-    <div id="g-result-cards"></div>
-
-    <!-- Raw JSON toggle -->
-    <div id="g-result-raw" style="display:none">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
-        <button class="btn btn-secondary" style="padding:6px 14px;font-size:0.82rem" onclick="toggleRaw('g')">Hide JSON</button>
-      </div>
-      <div class="response-box"><pre id="g-json"></pre></div>
-    </div>
-    <div id="g-show-raw" style="display:none;margin-top:8px">
-      <button class="btn btn-secondary" style="padding:6px 14px;font-size:0.82rem" onclick="toggleRaw('g')">Show Raw JSON</button>
-    </div>
-  </div>
-
-  <!-- ══════════════════════════════════════════ -->
-  <!-- TAB 2: Search Places                      -->
-  <!-- ══════════════════════════════════════════ -->
-  <div class="tab-panel" id="tab-places">
-    <div class="card">
-      <h2>📍 Search Tourist Places <small style="font-size:0.75rem;color:#64748b;font-weight:400;margin-left:4px">GET /api/places/search</small></h2>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Destination</label>
-          <input type="text" id="p-destination" value="Chennai" />
-        </div>
-        <div class="form-group">
-          <label>Category</label>
-          <select id="p-category">
-            <option value="tourist_attraction">Tourist Attraction</option>
-            <option value="temple">Temple</option>
-            <option value="beach">Beach</option>
-            <option value="museum">Museum</option>
-            <option value="park">Park</option>
-            <option value="restaurant">Restaurant</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Limit</label>
-          <input type="number" id="p-limit" value="10" min="1" max="30" />
-        </div>
-      </div>
-      <button class="btn btn-primary" onclick="searchPlaces()">🔍 Search Places</button>
-    </div>
-    <div class="status-bar hidden" id="p-status"></div>
-    <div class="response-box" id="p-result" style="display:none"><pre id="p-json"></pre></div>
-  </div>
-
-  <!-- ══════════════════════════════════════════ -->
-  <!-- TAB 3: Enrich Place                       -->
-  <!-- ══════════════════════════════════════════ -->
-  <div class="tab-panel" id="tab-enrich">
-    <div class="card">
-      <h2>✨ Enrich Place via Perplexity <small style="font-size:0.75rem;color:#64748b;font-weight:400;margin-left:4px">POST /api/places/enrich</small></h2>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Place Name</label>
-          <input type="text" id="e-place" value="Kapaleeshwarar Temple" />
-        </div>
-        <div class="form-group">
-          <label>City</label>
-          <input type="text" id="e-city" value="Chennai" />
-        </div>
-      </div>
-      <button class="btn btn-primary" onclick="enrichPlace()">✨ Get Real-Time Details</button>
-    </div>
-    <div class="status-bar hidden" id="e-status"></div>
-    <div id="e-result-cards"></div>
-    <div class="response-box" id="e-result" style="display:none"><pre id="e-json"></pre></div>
-  </div>
-
-  <!-- ══════════════════════════════════════════ -->
-  <!-- TAB 4: Weather                            -->
-  <!-- ══════════════════════════════════════════ -->
-  <div class="tab-panel" id="tab-weather">
-    <div class="card">
-      <h2>⛅ Weather Forecast <small style="font-size:0.75rem;color:#64748b;font-weight:400;margin-left:4px">GET /api/weather/forecast</small></h2>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>City</label>
-          <input type="text" id="w-city" value="Chennai" />
-        </div>
-        <div class="form-group">
-          <label>Days</label>
-          <input type="number" id="w-days" value="3" min="1" max="7" />
-        </div>
-      </div>
-      <button class="btn btn-primary" onclick="getWeather()">⛅ Get Forecast</button>
-    </div>
-    <div class="status-bar hidden" id="w-status"></div>
-    <div class="response-box" id="w-result" style="display:none"><pre id="w-json"></pre></div>
-  </div>
-
-  <!-- ══════════════════════════════════════════ -->
-  <!-- TAB 5: Raw API                            -->
-  <!-- ══════════════════════════════════════════ -->
-  <div class="tab-panel" id="tab-raw">
-    <div class="card">
-      <h2>🧪 Raw API Request</h2>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Method</label>
-          <select id="r-method">
-            <option>GET</option>
-            <option selected>POST</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Endpoint</label>
-          <input type="text" id="r-endpoint" value="/api/itinerary/generate" />
-        </div>
-        <div class="form-group full">
-          <label>Request Body (JSON)</label>
-          <textarea id="r-body" rows="8" style="resize:vertical;font-family:monospace;font-size:0.85rem">{
-  "destination": "Chennai",
-  "days": 2,
-  "budget": "medium",
-  "travel_type": "family",
-  "mood": "cultural",
-  "interests": ["temples", "beach", "history"]
-}</textarea>
-        </div>
-      </div>
-      <button class="btn btn-primary" onclick="rawRequest()">🚀 Send Request</button>
-    </div>
-    <div class="status-bar hidden" id="r-status"></div>
-    <div class="response-box" id="r-result" style="display:none"><pre id="r-json"></pre></div>
-  </div>
-
+<div class="status-bar">
+  <div id="statusDot"></div>
+  <span id="statusText">Click Ping to check server</span>
+  <button class="ping-btn" onclick="ping()">&#128308; Ping Server</button>
 </div>
 
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">&#128197; Generate Itinerary</div>
+  <div class="tab" onclick="switchTab(1)">&#128205; Search Places</div>
+  <div class="tab" onclick="switchTab(2)">&#10024; Enrich Place</div>
+  <div class="tab" onclick="switchTab(3)">&#9925; Weather</div>
+  <div class="tab" onclick="switchTab(4)">&#128300; Raw API</div>
+</div>
+
+<main>
+
+<!-- ===== TAB 0: GENERATE ITINERARY ===== -->
+<div class="panel active" id="panel-0">
+  <div class="card">
+    <h2>&#128197; Generate AI Itinerary</h2>
+    <div class="form-row">
+      <div><label>Destination *</label><input id="g-dest" value="Chennai" placeholder="e.g. Chennai, Ooty, Goa"/></div>
+      <div><label>Days *</label><input id="g-days" type="number" value="2" min="1" max="14"/></div>
+    </div>
+    <div class="form-row triple">
+      <div><label>Budget</label>
+        <select id="g-budget"><option value="low">Low (Budget)</option><option value="medium" selected>Medium</option><option value="high">High (Luxury)</option></select>
+      </div>
+      <div><label>Travel Type</label>
+        <select id="g-type"><option value="solo" selected>Solo</option><option value="couple">Couple</option><option value="family">Family</option><option value="group">Group</option></select>
+      </div>
+      <div><label>Mood/Theme</label>
+        <select id="g-mood"><option value="cultural" selected>Cultural</option><option value="relaxed">Relaxed</option><option value="adventure">Adventure</option><option value="spiritual">Spiritual</option><option value="romantic">Romantic</option><option value="foodie">Foodie</option></select>
+      </div>
+    </div>
+    <div style="margin-bottom:14px">
+      <label>Interests (select all that apply)</label>
+      <div class="checkbox-group">
+        <label><input type="checkbox" value="temples" checked> Temples</label>
+        <label><input type="checkbox" value="beach" checked> Beach</label>
+        <label><input type="checkbox" value="history"> History</label>
+        <label><input type="checkbox" value="food" checked> Food</label>
+        <label><input type="checkbox" value="shopping"> Shopping</label>
+        <label><input type="checkbox" value="nature"> Nature</label>
+        <label><input type="checkbox" value="art"> Art & Culture</label>
+        <label><input type="checkbox" value="adventure"> Adventure</label>
+      </div>
+    </div>
+    <div class="form-row">
+      <div><label>Travel Date (optional)</label><input id="g-date" type="date"/></div>
+      <div style="display:flex;gap:20px;align-items:flex-end;padding-bottom:2px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.85rem;color:#e2e8f0">
+          <input type="checkbox" id="g-crowd" style="width:auto"> Avoid Crowded
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.85rem;color:#e2e8f0">
+          <input type="checkbox" id="g-access" style="width:auto"> Accessibility Needs
+        </label>
+      </div>
+    </div>
+    <button class="btn" id="gen-btn" onclick="generateItinerary()">
+      <span id="gen-icon">&#9889;</span> Generate Itinerary
+    </button>
+  </div>
+  <div class="result-box" id="gen-result"></div>
+</div>
+
+<!-- ===== TAB 1: SEARCH PLACES ===== -->
+<div class="panel" id="panel-1">
+  <div class="card">
+    <h2>&#128205; Search Tourist Places</h2>
+    <div class="form-row">
+      <div><label>Destination *</label><input id="sp-dest" value="Chennai" placeholder="City name"/></div>
+      <div><label>Category</label>
+        <select id="sp-cat">
+          <option value="tourist_attraction">All Attractions</option>
+          <option value="temple">Temples</option>
+          <option value="beach">Beach</option>
+          <option value="museum">Museum</option>
+          <option value="park">Park</option>
+          <option value="food">Food & Restaurants</option>
+          <option value="shopping">Shopping</option>
+          <option value="heritage">Heritage Sites</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row single">
+      <div><label>Limit (max 30)</label><input id="sp-limit" type="number" value="10" min="1" max="30"/></div>
+    </div>
+    <button class="btn" id="sp-btn" onclick="searchPlaces()">
+      <span id="sp-icon">&#128269;</span> Search Places
+    </button>
+  </div>
+  <div class="result-box" id="sp-result"></div>
+</div>
+
+<!-- ===== TAB 2: ENRICH PLACE ===== -->
+<div class="panel" id="panel-2">
+  <div class="card">
+    <h2>&#10024; Enrich Place Details (via Groq)</h2>
+    <div class="form-row">
+      <div><label>Place Name *</label><input id="ep-name" value="Kapaleeshwarar Temple" placeholder="e.g. Marina Beach"/></div>
+      <div><label>City *</label><input id="ep-city" value="Chennai" placeholder="e.g. Chennai"/></div>
+    </div>
+    <button class="btn" id="ep-btn" onclick="enrichPlace()">
+      <span id="ep-icon">&#10024;</span> Enrich Place
+    </button>
+  </div>
+  <div class="result-box" id="ep-result"></div>
+</div>
+
+<!-- ===== TAB 3: WEATHER ===== -->
+<div class="panel" id="panel-3">
+  <div class="card">
+    <h2>&#9925; Weather Forecast</h2>
+    <div class="form-row">
+      <div><label>City *</label><input id="w-city" value="Chennai" placeholder="City name"/></div>
+      <div><label>Days (1–7)</label><input id="w-days" type="number" value="3" min="1" max="7"/></div>
+    </div>
+    <button class="btn" id="w-btn" onclick="getWeather()">
+      <span id="w-icon">&#9925;</span> Get Forecast
+    </button>
+  </div>
+  <div class="result-box" id="w-result"></div>
+</div>
+
+<!-- ===== TAB 4: RAW API ===== -->
+<div class="panel" id="panel-4">
+  <div class="card">
+    <h2>&#128300; Raw API Tester</h2>
+    <div class="form-row">
+      <div><label>Method</label>
+        <select id="raw-method">
+          <option>GET</option><option selected>POST</option><option>PUT</option><option>DELETE</option>
+        </select>
+      </div>
+      <div><label>Endpoint (relative)</label><input id="raw-endpoint" value="/api/itinerary/generate" placeholder="/api/..."/></div>
+    </div>
+    <div class="form-row single">
+      <div>
+        <label>Request Body (JSON)</label>
+        <textarea id="raw-body" rows="8" placeholder="{...}">{"destination":"Chennai","days":1,"budget":"medium","travel_type":"solo","mood":"cultural","interests":["temples","beach","food"]}</textarea>
+      </div>
+    </div>
+    <button class="btn" id="raw-btn" onclick="rawRequest()">
+      <span id="raw-icon">&#128640;</span> Send Request
+    </button>
+  </div>
+  <div class="result-box" id="raw-result"></div>
+</div>
+
+</main>
+
 <script>
-  // ─────────────────────────────────────────────────────
-  // Helpers
-  // ─────────────────────────────────────────────────────
-  const base = () => document.getElementById('baseUrl').value.replace(/\/$/, '');
+const BASE = ''  // Same origin — served from FastAPI at /test
 
-  function switchTab(name, el) {
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('tab-' + name).classList.add('active');
-    el.classList.add('active');
+// ──────────── TAB SWITCHING ────────────
+function switchTab(i) {
+  document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle('active',i===j))
+  document.querySelectorAll('.panel').forEach((p,j)=>p.classList.toggle('active',i===j))
+}
+
+// ──────────── PING ────────────
+async function ping() {
+  const dot = document.getElementById('statusDot')
+  const txt = document.getElementById('statusText')
+  dot.className='';txt.textContent='Pinging...'
+  try {
+    const r = await fetch(BASE+'/health')
+    const d = await r.json()
+    dot.className='on'
+    txt.textContent=`✅ Server online — ${d.llm} | env: ${d.env}`
+  } catch {
+    dot.className=''
+    txt.textContent='❌ Server offline — start with: uvicorn main:app --reload'
   }
+}
 
-  function setStatus(id, type, msg) {
-    const el = document.getElementById(id + '-status');
-    el.className = 'status-bar ' + type;
-    el.innerHTML = type === 'loading'
-      ? `<div class="spinner"></div> ${msg}`
-      : (type === 'success' ? '✅ ' : '❌ ') + msg;
+// ──────────── HELPERS ────────────
+function setLoading(btnId, iconId, loading, label='') {
+  const btn=document.getElementById(btnId), icon=document.getElementById(iconId)
+  btn.disabled=loading
+  if(loading){icon.className='spinner';icon.textContent=''}
+  else{icon.className='';icon.textContent=label}
+}
+
+function renderMeta(ok, ms, extra='') {
+  return `<div class="result-meta">
+    <span class="badge ${ok?'success':'error'}">${ok?'✅ Success':'❌ Error'}</span>
+    <span class="badge info">⏱ ${ms}ms</span>
+    ${extra}
+  </div>`
+}
+
+function renderRaw(data, id) {
+  return `<span class="raw-toggle" onclick="toggleRaw('${id}')">{ } Toggle Raw JSON</span>
+    <div class="raw-json" id="raw-${id}">${JSON.stringify(data,null,2)}</div>`
+}
+
+function toggleRaw(id) {
+  const el=document.getElementById('raw-'+id)
+  el.style.display=el.style.display==='block'?'none':'block'
+}
+
+// ──────────── 1. GENERATE ITINERARY ────────────
+async function generateItinerary() {
+  const interests = [...document.querySelectorAll('.checkbox-group input:checked')].map(c=>c.value)
+  const body = {
+    destination: document.getElementById('g-dest').value.trim(),
+    days: parseInt(document.getElementById('g-days').value),
+    budget: document.getElementById('g-budget').value,
+    travel_type: document.getElementById('g-type').value,
+    mood: document.getElementById('g-mood').value,
+    interests,
+    travel_dates: document.getElementById('g-date').value || null,
+    avoid_crowded: document.getElementById('g-crowd').checked,
+    accessibility_needs: document.getElementById('g-access').checked
   }
+  if(!body.destination){alert('Enter a destination');return}
+  setLoading('gen-btn','gen-icon',true)
+  const t0=Date.now()
+  try {
+    const r=await fetch(BASE+'/api/itinerary/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    const d=await r.json()
+    const ms=Date.now()-t0
+    if(!r.ok) throw d
+    renderItinerary(d, ms)
+  } catch(e) {
+    document.getElementById('gen-result').innerHTML=renderMeta(false,Date.now()-t0)+
+      `<div class="warning-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
+  } finally { setLoading('gen-btn','gen-icon',false,'⚡ Generate Itinerary') }
+}
 
-  function showJSON(id, data) {
-    document.getElementById(id + '-json').textContent = JSON.stringify(data, null, 2);
-    const box = document.getElementById(id + '-result');
-    if (box) { box.style.display = 'block'; }
+function renderItinerary(d, ms) {
+  const meta=d.meta||{}
+  let html=renderMeta(true,ms,
+    `<span class="badge info">${d.itinerary?.length} stops</span>`+
+    `<span class="badge info">🏙️ ${meta.destination} • ${meta.days}d • ${meta.travel_type} • ${meta.budget}</span>`
+  )
+  if(d.weather_warnings?.length) {
+    d.weather_warnings.forEach(w=>html+=`<div class="warning-banner">${w}</div>`)
   }
-
-  function toggleRaw(prefix) {
-    const raw = document.getElementById(prefix + '-result-raw');
-    const btn = document.getElementById(prefix + '-show-raw');
-    if (raw.style.display === 'none') {
-      raw.style.display = 'block';
-      btn.style.display = 'none';
-    } else {
-      raw.style.display = 'none';
-      btn.style.display = 'block';
-    }
-  }
-
-  async function apiFetch(method, path, body = null) {
-    const opts = {
-      method,
-      headers: { 'Content-Type': 'application/json' }
-    };
-    if (body) opts.body = JSON.stringify(body);
-    const res = await fetch(base() + path, opts);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
-    return data;
-  }
-
-  // ─────────────────────────────────────────────────────
-  // Ping Health
-  // ─────────────────────────────────────────────────────
-  async function pingHealth() {
-    try {
-      const data = await apiFetch('GET', '/health');
-      alert('✅ API is healthy!\n' + JSON.stringify(data, null, 2));
-    } catch (e) {
-      alert('❌ Cannot connect to API.\n' + e.message);
-    }
-  }
-
-  // ─────────────────────────────────────────────────────
-  // Generate Itinerary
-  // ─────────────────────────────────────────────────────
-  async function generateItinerary() {
-    const btn = document.getElementById('g-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<div class="spinner"></div> Generating...';
-    setStatus('g', 'loading', 'Calling Perplexity sonar-pro...');
-    document.getElementById('g-result-cards').innerHTML = '';
-    document.getElementById('g-result-raw').style.display = 'none';
-    document.getElementById('g-show-raw').style.display = 'none';
-
-    const interests = [...document.querySelectorAll('.checkbox-group input:checked')].map(i => i.value);
-    const payload = {
-      destination: document.getElementById('g-destination').value,
-      days: parseInt(document.getElementById('g-days').value),
-      budget: document.getElementById('g-budget').value,
-      travel_type: document.getElementById('g-travel_type').value,
-      mood: document.getElementById('g-mood').value,
-      interests,
-      travel_dates: document.getElementById('g-travel_dates').value || null
-    };
-
-    try {
-      const data = await apiFetch('POST', '/api/itinerary/generate', payload);
-      setStatus('g', 'success', `Itinerary generated! ${data.itinerary.length} stops across ${payload.days} day(s).`);
-
-      // Weather warnings
-      const container = document.getElementById('g-result-cards');
-      if (data.weather_warnings && data.weather_warnings.length) {
-        data.weather_warnings.forEach(w => {
-          container.innerHTML += `<div class="warning-banner">⚠️ ${w}</div>`;
-        });
-      }
-
-      // Group by day
-      const byDay = {};
-      data.itinerary.forEach(s => {
-        if (!byDay[s.day]) byDay[s.day] = [];
-        byDay[s.day].push(s);
-      });
-
-      Object.entries(byDay).forEach(([day, stops]) => {
-        container.innerHTML += `<h3 style="color:#60a5fa;margin:18px 0 10px;font-size:1rem">🗓️ Day ${day}</h3>`;
-        container.innerHTML += `<div class="itinerary-grid">${stops.map(s => `
-          <div class="stop-card">
-            <div class="day-badge">Day ${s.day}</div>
-            <div class="stop-time">${s.time || ''} ${ s.category ? '• ' + s.category : ''}</div>
-            <div class="stop-name">${s.place_name}</div>
-            <div class="stop-meta">
-              ${ s.duration_hrs ? `⏱ ${s.duration_hrs}hr` : ''}
-              ${ s.entry_fee !== undefined ? `🎫 ₹${s.entry_fee}` : ''}
-              ${ s.rating ? `⭐ ${s.rating}` : ''}
-            </div>
-            ${ s.tip ? `<div class="stop-tip">💡 ${s.tip}</div>` : ''}
-            ${ s.warning ? `<div style="color:#f87171;font-size:0.78rem;margin-top:6px">⚠️ ${s.warning}</div>` : ''}
+  // Group by day
+  const byDay={}
+  ;(d.itinerary||[]).forEach(s=>{(byDay[s.day]=byDay[s.day]||[]).push(s)})
+  html+='<div class="itinerary-days">'
+  Object.entries(byDay).forEach(([day,stops])=>{
+    html+=`<div><div class="day-header">🗓️ Day ${day}</div><div class="stops-grid">`
+    stops.forEach(s=>{
+      const fee=s.entry_fee===0?'Free':(s.entry_fee?`₹${s.entry_fee}`:'')
+      html+=`<div class="stop-card">
+        <div class="stop-time">${s.time||''}</div>
+        <div>
+          <div class="stop-name">${s.place_name}</div>
+          <div class="stop-meta">
+            ${s.category?`<span>🏷️ ${s.category}</span>`:''}
+            ${s.duration_hrs?`<span>⏱ ${s.duration_hrs}h</span>`:''}
+            ${s.lat?`<span>📍 ${s.lat?.toFixed(3)}, ${s.lon?.toFixed(3)}</span>`:''}
           </div>
-        `).join('')}</div>`;
-      });
-
-      // Store JSON for toggle
-      document.getElementById('g-json').textContent = JSON.stringify(data, null, 2);
-      document.getElementById('g-show-raw').style.display = 'block';
-
-    } catch (e) {
-      setStatus('g', 'error', e.message);
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = '⚡ Generate Itinerary';
-    }
-  }
-
-  // ─────────────────────────────────────────────────────
-  // Search Places
-  // ─────────────────────────────────────────────────────
-  async function searchPlaces() {
-    setStatus('p', 'loading', 'Searching places...');
-    const dest = document.getElementById('p-destination').value;
-    const cat  = document.getElementById('p-category').value;
-    const lim  = document.getElementById('p-limit').value;
-    try {
-      const data = await apiFetch('GET', `/api/places/search?destination=${dest}&category=${cat}&limit=${lim}`);
-      setStatus('p', 'success', `Found ${data.count} places in ${dest}.`);
-      showJSON('p', data);
-    } catch (e) {
-      setStatus('p', 'error', e.message);
-    }
-  }
-
-  // ─────────────────────────────────────────────────────
-  // Enrich Place
-  // ─────────────────────────────────────────────────────
-  async function enrichPlace() {
-    setStatus('e', 'loading', 'Fetching real-time info from Perplexity...');
-    document.getElementById('e-result-cards').innerHTML = '';
-    document.getElementById('e-result').style.display = 'none';
-
-    const payload = {
-      place_name: document.getElementById('e-place').value,
-      city: document.getElementById('e-city').value
-    };
-    try {
-      const data = await apiFetch('POST', '/api/places/enrich', payload);
-      setStatus('e', 'success', `Got real-time details for ${payload.place_name}.`);
-
-      const c = document.getElementById('e-result-cards');
-      const rows = [
-        ['🕒 Opening Hours', data.opening_hours],
-        ['🚫 Closed On', data.closed_on?.join(', ')],
-        ['🎫 Entry Fee (Indian)', data.entry_fee_indian !== undefined ? `₹${data.entry_fee_indian}` : null],
-        ['🎫 Entry Fee (Foreign)', data.entry_fee_foreign !== undefined ? `₹${data.entry_fee_foreign}` : null],
-        ['☀️ Best Time', data.best_time_to_visit],
-        ['⏱ Avg Duration', data.avg_visit_duration_hrs ? `${data.avg_visit_duration_hrs} hrs` : null],
-        ['💡 Local Tip', data.local_tip],
-        ['🍴 Nearby Food', data.nearby_food]
-      ].filter(r => r[1]);
-
-      c.innerHTML = `<div class="card" style="margin-top:16px">
-        <h2 style="margin-bottom:14px">${payload.place_name} — ${payload.city}</h2>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          ${rows.map(([k,v]) => `
-            <div style="background:#0f172a;padding:10px 14px;border-radius:8px;border:1px solid #334155">
-              <div style="font-size:0.75rem;color:#64748b;margin-bottom:4px">${k}</div>
-              <div style="font-size:0.9rem;color:#e2e8f0">${v}</div>
-            </div>
-          `).join('')}
+          ${s.tip?`<div class="stop-tip">💡 ${s.tip}</div>`:''}
         </div>
-      </div>`;
+        ${fee?`<span class="stop-fee">${fee}</span>`:''}
+      </div>`
+    })
+    html+='</div></div>'
+  })
+  html+='</div>'
+  html+=renderRaw(d,'gen')
+  document.getElementById('gen-result').innerHTML=html
+}
 
-      showJSON('e', data);
-    } catch (e) {
-      setStatus('e', 'error', e.message);
+// ──────────── 2. SEARCH PLACES ────────────
+async function searchPlaces() {
+  const dest=document.getElementById('sp-dest').value.trim()
+  const cat=document.getElementById('sp-cat').value
+  const limit=document.getElementById('sp-limit').value
+  if(!dest){alert('Enter a destination');return}
+  setLoading('sp-btn','sp-icon',true)
+  const t0=Date.now()
+  try {
+    const r=await fetch(`${BASE}/api/places/search?destination=${encodeURIComponent(dest)}&category=${cat}&limit=${limit}`)
+    const d=await r.json()
+    const ms=Date.now()-t0
+    if(!r.ok) throw d
+    let html=renderMeta(true,ms,`<span class="badge info">${d.count} places found</span>`)
+    if(d.count===0){
+      html+=`<div class="no-result">🔍 No places found. Try a different category or check API keys in .env</div>`
+    } else {
+      html+='<div class="places-grid">'
+      d.places.forEach(p=>{
+        html+=`<div class="place-card">
+          <div class="place-name">${p.place_name||'Unknown'}</div>
+          <div class="place-meta">
+            ${p.address?`<div>📍 ${p.address}</div>`:''}
+            ${p.rating?`<div>⭐ ${p.rating}</div>`:''}
+            ${p.opening_hours?`<div>⏰ ${p.opening_hours}</div>`:''}
+            <div style="color:#475569;font-size:.7rem;margin-top:4px">${p.source}</div>
+          </div>
+        </div>`
+      })
+      html+='</div>'
     }
-  }
+    html+=renderRaw(d,'sp')
+    document.getElementById('sp-result').innerHTML=html
+  } catch(e) {
+    document.getElementById('sp-result').innerHTML=renderMeta(false,Date.now()-t0)+
+      `<div class="warning-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
+  } finally { setLoading('sp-btn','sp-icon',false,'🔍 Search Places') }
+}
 
-  // ─────────────────────────────────────────────────────
-  // Weather
-  // ─────────────────────────────────────────────────────
-  async function getWeather() {
-    setStatus('w', 'loading', 'Fetching weather forecast...');
-    const city = document.getElementById('w-city').value;
-    const days = document.getElementById('w-days').value;
-    try {
-      const data = await apiFetch('GET', `/api/weather/forecast?city=${city}&days=${days}`);
-      setStatus('w', 'success', `Weather fetched for ${city}. ${data.has_warnings ? '⚠️ Warnings found!' : '✅ No weather warnings.'}`);
-      showJSON('w', data);
-    } catch (e) {
-      setStatus('w', 'error', e.message);
+// ──────────── 3. ENRICH PLACE ────────────
+async function enrichPlace() {
+  const name=document.getElementById('ep-name').value.trim()
+  const city=document.getElementById('ep-city').value.trim()
+  if(!name||!city){alert('Enter place name and city');return}
+  setLoading('ep-btn','ep-icon',true)
+  const t0=Date.now()
+  try {
+    const r=await fetch(BASE+'/api/places/enrich',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({place_name:name,city})})
+    const d=await r.json()
+    const ms=Date.now()-t0
+    if(!r.ok) throw d
+    let html=renderMeta(true,ms,`<span class="badge info">${name}, ${city}</span>`)
+    html+='<div class="enrich-result">'
+    const fields=[
+      ['opening_hours','⏰ Opening Hours'],['closed_on','🚪 Closed On'],
+      ['entry_fee_indian','🇮🇳 Indian Entry Fee'],['entry_fee_foreign','🌍 Foreign Entry Fee'],
+      ['best_time_to_visit','☀️ Best Time'],['avg_visit_duration_hrs','⏱ Avg Duration (hrs)'],
+      ['local_tip','💡 Local Tip'],['nearby_food','🍽️ Nearby Food']
+    ]
+    fields.forEach(([k,label])=>{
+      const v=d[k]
+      if(v===undefined||v===null) return
+      const val=Array.isArray(v)?v.join(', '):(typeof v==='number'&&k.includes('fee')?`₹${v}`:v)
+      html+=`<div class="enrich-item"><div class="enrich-label">${label}</div><div class="enrich-value">${val||'N/A'}</div></div>`
+    })
+    html+='</div>'+renderRaw(d,'ep')
+    document.getElementById('ep-result').innerHTML=html
+  } catch(e) {
+    document.getElementById('ep-result').innerHTML=renderMeta(false,Date.now()-t0)+
+      `<div class="warning-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
+  } finally { setLoading('ep-btn','ep-icon',false,'✨ Enrich Place') }
+}
+
+// ──────────── 4. WEATHER ────────────
+async function getWeather() {
+  const city=document.getElementById('w-city').value.trim()
+  const days=document.getElementById('w-days').value
+  if(!city){alert('Enter a city');return}
+  setLoading('w-btn','w-icon',true)
+  const t0=Date.now()
+  try {
+    const r=await fetch(`${BASE}/api/weather/forecast?city=${encodeURIComponent(city)}&days=${days}`)
+    const d=await r.json()
+    const ms=Date.now()-t0
+    if(!r.ok) throw d
+    let html=renderMeta(true,ms,`<span class="badge ${d.has_warnings?'warn':'success'}">${d.has_warnings?'⚠️ Has Warnings':'✅ Clear Weather'}</span>`)
+    if(d.warnings?.length){
+      d.warnings.forEach(w=>html+=`<div class="warning-banner">${w}</div>`)
     }
-  }
-
-  // ─────────────────────────────────────────────────────
-  // Raw API
-  // ─────────────────────────────────────────────────────
-  async function rawRequest() {
-    const method   = document.getElementById('r-method').value;
-    const endpoint = document.getElementById('r-endpoint').value;
-    const bodyText = document.getElementById('r-body').value;
-    setStatus('r', 'loading', `${method} ${endpoint}`);
-
-    let body = null;
-    try { if (bodyText.trim()) body = JSON.parse(bodyText); }
-    catch { setStatus('r', 'error', 'Invalid JSON body'); return; }
-
-    try {
-      const data = await apiFetch(method, endpoint, body);
-      setStatus('r', 'success', `${method} ${endpoint} → 200 OK`);
-      showJSON('r', data);
-    } catch (e) {
-      setStatus('r', 'error', e.message);
+    if(!d.forecast?.length){
+      html+=`<div class="no-result">💬 No forecast data. Add OPENWEATHER_API_KEY to .env to enable weather.</div>`
+    } else {
+      html+='<div class="weather-grid">'
+      d.forecast.forEach(f=>{
+        const hasWarn=!!f.warning
+        html+=`<div class="weather-card" style="${hasWarn?'border-color:#92400e':''}">  
+          <div class="weather-date">${f.date}</div>
+          <div class="weather-temp">${Math.round(f.temp_min)}° – ${Math.round(f.temp_max)}°C</div>
+          <div class="weather-condition">${f.conditions?.join(', ')||''}</div>
+          ${hasWarn?'<div style="font-size:.7rem;color:#fb923c;margin-top:6px">⚠️ Warning</div>':''}
+        </div>`
+      })
+      html+='</div>'
     }
-  }
+    html+=renderRaw(d,'w')
+    document.getElementById('w-result').innerHTML=html
+  } catch(e) {
+    document.getElementById('w-result').innerHTML=renderMeta(false,Date.now()-t0)+
+      `<div class="warning-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
+  } finally { setLoading('w-btn','w-icon',false,'⛅ Get Forecast') }
+}
+
+// ──────────── 5. RAW REQUEST ────────────
+async function rawRequest() {
+  const method=document.getElementById('raw-method').value
+  const endpoint=document.getElementById('raw-endpoint').value.trim()
+  const bodyStr=document.getElementById('raw-body').value.trim()
+  setLoading('raw-btn','raw-icon',true)
+  const t0=Date.now()
+  try {
+    const opts={method,headers:{}}
+    if(['POST','PUT'].includes(method)&&bodyStr){
+      opts.headers['Content-Type']='application/json'
+      opts.body=bodyStr
+    }
+    const r=await fetch(BASE+endpoint,opts)
+    const d=await r.json()
+    const ms=Date.now()-t0
+    let html=renderMeta(r.ok,ms,`<span class="badge info">HTTP ${r.status}</span>`)
+    html+=`<div class="raw-json" style="display:block">${JSON.stringify(d,null,2)}</div>`
+    document.getElementById('raw-result').innerHTML=html
+  } catch(e) {
+    document.getElementById('raw-result').innerHTML=renderMeta(false,Date.now()-t0)+
+      `<div class="warning-banner">${e.message}</div>`
+  } finally { setLoading('raw-btn','raw-icon',false,'🚀 Send Request') }
+}
+
+// Auto-ping on load
+window.addEventListener('load',()=>setTimeout(ping,500))
 </script>
-
 </body>
 </html>

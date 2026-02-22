@@ -1,33 +1,47 @@
 import os
+import logging
 import httpx
 from typing import List, Dict
 
-OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
+logger = logging.getLogger(__name__)
 
 WARNING_CONDITIONS = ["Rain", "Thunderstorm", "Drizzle", "Snow", "Extreme"]
 
+
 async def get_weather_forecast(city: str, days: int = 3) -> List[Dict]:
     """
-    Fetch weather forecast and flag bad-weather days for trip planning.
+    Fetch weather forecast from OpenWeatherMap.
+    Returns graceful empty list if OPENWEATHER_API_KEY is not configured.
     """
+    api_key = os.getenv("OPENWEATHER_API_KEY")
+
+    if not api_key:
+        logger.warning("OPENWEATHER_API_KEY not set — weather skipped")
+        return []
+
     url = "https://api.openweathermap.org/data/2.5/forecast"
     params = {
         "q": city,
-        "cnt": days * 8,  # 8 readings per day (every 3hrs)
+        "cnt": days * 8,
         "units": "metric",
-        "appid": OPENWEATHER_API_KEY
+        "appid": api_key
     }
 
-    async with httpx.AsyncClient() as client:
-        res = await client.get(url, params=params, timeout=10)
-        data = res.json()
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(url, params=params)
+            data = res.json()
+    except Exception as e:
+        logger.warning(f"Weather API request failed: {e}")
+        return []
 
     if data.get("cod") != "200":
-        return [{"error": "Could not fetch weather"}]
+        logger.warning(f"Weather API error for '{city}': {data.get('message', 'unknown')}")
+        return []
 
     # Summarize per day
     daily = {}
-    for item in data["list"]:
+    for item in data.get("list", []):
         date = item["dt_txt"].split(" ")[0]
         if date not in daily:
             daily[date] = {
@@ -40,7 +54,12 @@ async def get_weather_forecast(city: str, days: int = 3) -> List[Dict]:
         condition = item["weather"][0]["main"]
         if condition not in daily[date]["conditions"]:
             daily[date]["conditions"].append(condition)
-        if condition in WARNING_CONDITIONS:
-            daily[date]["warning"] = f"⚠️ {condition} expected — carry umbrella or reschedule outdoor visits"
+        if condition in WARNING_CONDITIONS and not daily[date]["warning"]:
+            daily[date]["warning"] = (
+                f"⚠️ {condition} expected on {date} — "
+                "carry umbrella or reschedule outdoor visits"
+            )
 
-    return list(daily.values())[:days]
+    result = list(daily.values())[:days]
+    logger.info(f"Weather: {len(result)} days fetched for {city}")
+    return result
