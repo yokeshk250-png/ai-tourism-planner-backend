@@ -1,496 +1,459 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Tourism Planner — API Tester</title>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
-    header{background:linear-gradient(135deg,#1a1f2e,#252d3d);padding:20px 32px;border-bottom:1px solid #2d3748;display:flex;align-items:center;gap:14px}
-    header h1{font-size:1.4rem;font-weight:700;color:#fff}header span{font-size:.8rem;background:#3b82f6;color:#fff;padding:2px 10px;border-radius:99px}
-    .status-bar{display:flex;align-items:center;gap:10px;padding:10px 32px;background:#161b27;border-bottom:1px solid #2d3748;font-size:.8rem}
-    #statusDot{width:10px;height:10px;border-radius:50%;background:#ef4444;flex-shrink:0}
-    #statusDot.on{background:#22c55e}
-    #statusText{color:#94a3b8}
-    .ping-btn{margin-left:auto;background:#1e293b;border:1px solid #334155;color:#94a3b8;padding:4px 14px;border-radius:6px;cursor:pointer;font-size:.78rem}
-    .ping-btn:hover{background:#334155}
-    .tabs{display:flex;gap:0;padding:0 32px;background:#161b27;border-bottom:1px solid #2d3748;overflow-x:auto}
-    .tab{padding:12px 22px;cursor:pointer;font-size:.85rem;color:#64748b;border-bottom:2px solid transparent;white-space:nowrap;transition:.2s}
-    .tab.active{color:#3b82f6;border-bottom-color:#3b82f6;font-weight:600}
-    .tab:hover:not(.active){color:#94a3b8}
-    main{padding:28px 32px;max-width:1000px}
-    .panel{display:none}.panel.active{display:block}
-    .card{background:#1a1f2e;border:1px solid #2d3748;border-radius:12px;padding:24px;margin-bottom:20px}
-    .card h2{font-size:1rem;font-weight:600;margin-bottom:18px;color:#e2e8f0;display:flex;align-items:center;gap:8px}
-    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
-    .form-row.single{grid-template-columns:1fr}
-    .form-row.triple{grid-template-columns:1fr 1fr 1fr}
-    label{font-size:.78rem;color:#94a3b8;display:block;margin-bottom:5px}
-    input,select,textarea{width:100%;background:#0f1117;border:1px solid #334155;color:#e2e8f0;padding:9px 12px;border-radius:8px;font-size:.85rem;outline:none;transition:.2s}
-    input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.15)}
-    .checkbox-group{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
-    .checkbox-group label{display:flex;align-items:center;gap:6px;cursor:pointer;color:#e2e8f0;font-size:.82rem;background:#0f1117;border:1px solid #334155;padding:5px 11px;border-radius:6px;margin:0}
-    .checkbox-group input[type=checkbox]{width:auto;margin:0}
-    .btn{background:#3b82f6;color:#fff;border:none;padding:10px 22px;border-radius:8px;cursor:pointer;font-size:.88rem;font-weight:600;display:inline-flex;align-items:center;gap:8px;transition:.2s}
-    .btn:hover{background:#2563eb}.btn:disabled{opacity:.5;cursor:not-allowed}
-    .btn.secondary{background:#1e293b;border:1px solid #334155;color:#94a3b8}
-    .btn.secondary:hover{background:#334155}
-    .result-box{margin-top:20px}
-    .result-box h3{font-size:.8rem;color:#64748b;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em}
-    .result-meta{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
-    .badge{font-size:.72rem;padding:3px 10px;border-radius:99px;font-weight:600}
-    .badge.success{background:#064e3b;color:#34d399}.badge.error{background:#450a0a;color:#f87171}
-    .badge.info{background:#1e3a5f;color:#93c5fd}.badge.warn{background:#451a03;color:#fb923c}
-    .warning-banner{background:#451a03;border:1px solid #92400e;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.82rem;color:#fb923c}
-    .itinerary-days{display:flex;flex-direction:column;gap:16px}
-    .day-header{font-size:.9rem;font-weight:700;color:#3b82f6;padding:8px 0 4px;border-bottom:1px solid #1e293b;margin-bottom:8px}
-    .stops-grid{display:flex;flex-direction:column;gap:8px}
-    .stop-card{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:12px 14px;display:grid;grid-template-columns:50px 1fr auto;gap:10px;align-items:start}
-    .stop-time{color:#3b82f6;font-weight:700;font-size:.85rem;font-family:monospace}
-    .stop-name{font-weight:600;font-size:.9rem;color:#e2e8f0}
-    .stop-meta{font-size:.75rem;color:#64748b;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
-    .stop-tip{font-size:.75rem;color:#94a3b8;margin-top:5px;font-style:italic}
-    .stop-fee{font-size:.75rem;padding:2px 8px;border-radius:99px;background:#1e3a5f;color:#93c5fd;white-space:nowrap}
-    .places-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
-    .place-card{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:14px}
-    .place-name{font-weight:600;font-size:.88rem;margin-bottom:4px}
-    .place-meta{font-size:.73rem;color:#64748b}
-    .enrich-result{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .enrich-item{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px}
-    .enrich-label{font-size:.7rem;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
-    .enrich-value{font-size:.88rem;color:#e2e8f0;font-weight:500}
-    .weather-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
-    .weather-card{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:12px;text-align:center}
-    .weather-date{font-size:.75rem;color:#64748b;margin-bottom:6px}
-    .weather-temp{font-size:1.1rem;font-weight:700;color:#e2e8f0}
-    .weather-condition{font-size:.75rem;color:#94a3b8;margin-top:4px}
-    .raw-toggle{font-size:.75rem;color:#3b82f6;cursor:pointer;margin-top:12px;display:inline-block}
-    .raw-json{margin-top:8px;background:#0a0e18;border:1px solid #1e293b;border-radius:8px;padding:14px;font-family:monospace;font-size:.75rem;white-space:pre-wrap;color:#86efac;max-height:350px;overflow-y:auto;display:none}
-    .spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    .no-result{color:#475569;font-size:.85rem;text-align:center;padding:30px 0}
-  </style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>AI Tourism Planner — API Tester</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
+header{background:linear-gradient(135deg,#1a1f2e,#252d3d);padding:18px 32px;border-bottom:1px solid #2d3748;display:flex;align-items:center;gap:12px}
+header h1{font-size:1.35rem;font-weight:700;color:#fff}
+.chip{font-size:.72rem;padding:2px 9px;border-radius:99px;font-weight:600}
+.status-bar{display:flex;align-items:center;gap:10px;padding:9px 32px;background:#161b27;border-bottom:1px solid #2d3748;font-size:.8rem}
+#dot{width:9px;height:9px;border-radius:50%;background:#ef4444;flex-shrink:0}
+#dot.on{background:#22c55e}
+#stxt{color:#94a3b8}
+.ping-btn{margin-left:auto;background:#1e293b;border:1px solid #334155;color:#94a3b8;padding:4px 13px;border-radius:6px;cursor:pointer;font-size:.77rem}
+.ping-btn:hover{background:#334155}
+.tabs{display:flex;padding:0 32px;background:#161b27;border-bottom:1px solid #2d3748;overflow-x:auto;gap:0}
+.tab{padding:11px 20px;cursor:pointer;font-size:.84rem;color:#64748b;border-bottom:2px solid transparent;white-space:nowrap;transition:.15s}
+.tab.active{color:#3b82f6;border-bottom-color:#3b82f6;font-weight:600}
+.tab:hover:not(.active){color:#94a3b8}
+main{padding:24px 32px;max-width:1000px}
+.panel{display:none}.panel.active{display:block}
+.card{background:#1a1f2e;border:1px solid #2d3748;border-radius:12px;padding:22px;margin-bottom:18px}
+.card h2{font-size:.95rem;font-weight:600;margin-bottom:16px;color:#e2e8f0;display:flex;align-items:center;gap:7px}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.fr.s{grid-template-columns:1fr}.fr.t{grid-template-columns:1fr 1fr 1fr}
+label{font-size:.77rem;color:#94a3b8;display:block;margin-bottom:4px}
+input,select,textarea{width:100%;background:#0f1117;border:1px solid #334155;color:#e2e8f0;padding:8px 11px;border-radius:7px;font-size:.84rem;outline:none;transition:.2s}
+input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.12)}
+.cbg{display:flex;flex-wrap:wrap;gap:7px;margin-top:4px}
+.cbg label{display:flex;align-items:center;gap:5px;cursor:pointer;color:#e2e8f0;font-size:.8rem;background:#0f1117;border:1px solid #334155;padding:4px 10px;border-radius:6px;margin:0}
+.cbg input[type=checkbox]{width:auto;margin:0}
+.btn{background:#3b82f6;color:#fff;border:none;padding:9px 20px;border-radius:7px;cursor:pointer;font-size:.86rem;font-weight:600;display:inline-flex;align-items:center;gap:7px;transition:.2s}
+.btn:hover{background:#2563eb}.btn:disabled{opacity:.5;cursor:not-allowed}
+.result-box{margin-top:18px}
+.rmeta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.badge{font-size:.71rem;padding:3px 9px;border-radius:99px;font-weight:600}
+.ok{background:#064e3b;color:#34d399}.err{background:#450a0a;color:#f87171}
+.info{background:#1e3a5f;color:#93c5fd}.warn{background:#451a03;color:#fb923c}
+.alt{background:#3b1f6e;color:#c4b5fd}
+.warn-banner{background:#451a03;border:1px solid #92400e;border-radius:7px;padding:9px 13px;margin-bottom:10px;font-size:.81rem;color:#fb923c}
+/* Day sections */
+.day-section{margin-bottom:24px}
+.day-header{font-size:1rem;font-weight:700;color:#fff;padding:10px 14px;background:linear-gradient(135deg,#1e3a5f,#1e293b);border-radius:8px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+/* Slot sections */
+.slot-section{margin-bottom:14px;border-left:3px solid #1e293b;padding-left:14px}
+.slot-header{font-size:.78rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.slot-header.morning{color:#fbbf24;border-color:#fbbf24}
+.slot-header.afternoon{color:#34d399;border-color:#34d399}
+.slot-header.evening{color:#f97316;border-color:#f97316}
+.slot-header.night{color:#a78bfa;border-color:#a78bfa}
+/* Stop cards */
+.stop-card{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start;margin-bottom:7px}
+.stop-card.alt-card{border-color:#3b1f6e}
+.stop-time-col{min-width:80px;text-align:center}
+.stop-time{color:#3b82f6;font-weight:700;font-size:.82rem;font-family:monospace}
+.stop-end-time{color:#475569;font-size:.7rem;font-family:monospace}
+.stop-body{flex:1}
+.stop-name{font-weight:600;font-size:.9rem;color:#e2e8f0;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.stop-meta{font-size:.74rem;color:#64748b;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+.stop-tip{font-size:.74rem;color:#94a3b8;margin-top:5px;font-style:italic}
+.stop-fee{font-size:.73rem;padding:2px 8px;border-radius:99px;background:#1e3a5f;color:#93c5fd;white-space:nowrap}
+.travel-row{font-size:.71rem;color:#475569;padding:4px 0 6px 14px;display:flex;align-items:center;gap:5px}
+/* Meal gap */
+.meal-gap{background:#1a1f2e;border:1px dashed #2d3748;border-radius:6px;padding:7px 14px;margin:8px 0;font-size:.77rem;color:#475569;display:flex;align-items:center;gap:8px;cursor:pointer;transition:.2s}
+.meal-gap:hover{border-color:#3b82f6;color:#93c5fd}
+/* Unscheduled */
+.unsched-section{background:#1a1f2e;border:1px solid #7c3aed33;border-radius:8px;padding:14px;margin-top:14px}
+.unsched-header{font-size:.82rem;font-weight:600;color:#a78bfa;margin-bottom:10px}
+.unsched-item{background:#0f1117;border:1px solid #2d3748;border-radius:6px;padding:9px 12px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center}
+/* places/weather grids */
+.places-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.place-card{background:#0f1117;border:1px solid #1e293b;border-radius:7px;padding:12px}
+.place-name{font-weight:600;font-size:.86rem;margin-bottom:3px}
+.place-meta{font-size:.72rem;color:#64748b}
+.enrich-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.enrich-item{background:#0f1117;border:1px solid #1e293b;border-radius:7px;padding:9px 12px}
+.enrich-label{font-size:.69rem;color:#64748b;margin-bottom:3px;text-transform:uppercase;letter-spacing:.04em}
+.enrich-value{font-size:.86rem;color:#e2e8f0;font-weight:500}
+.w-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px}
+.w-card{background:#0f1117;border:1px solid #1e293b;border-radius:7px;padding:11px;text-align:center}
+.raw-toggle{font-size:.74rem;color:#3b82f6;cursor:pointer;margin-top:10px;display:inline-block}
+.raw-json{margin-top:7px;background:#0a0e18;border:1px solid #1e293b;border-radius:7px;padding:12px;font-family:monospace;font-size:.73rem;white-space:pre-wrap;color:#86efac;max-height:320px;overflow-y:auto;display:none}
+.spinner{width:13px;height:13px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{color:#475569;font-size:.84rem;text-align:center;padding:28px 0}
+</style>
 </head>
 <body>
-
 <header>
-  <div style="font-size:1.5rem">🗺️</div>
+  <div style="font-size:1.4rem">🗺️</div>
   <h1>AI Tourism Planner</h1>
-  <span>v2.2.0</span>
-  <span style="background:#7c3aed">Groq</span>
-  <span style="background:#0f766e">Llama 3.3 70B</span>
+  <span class="chip" style="background:#3b82f6">v2.3.0</span>
+  <span class="chip" style="background:#7c3aed">Groq</span>
+  <span class="chip" style="background:#0f766e">Llama 3.3 70B</span>
+  <span class="chip" style="background:#0f4c75">Smart Scheduler</span>
 </header>
-
 <div class="status-bar">
-  <div id="statusDot"></div>
-  <span id="statusText">Click Ping to check server</span>
-  <button class="ping-btn" onclick="ping()">&#128308; Ping Server</button>
+  <div id="dot"></div>
+  <span id="stxt">Click Ping</span>
+  <button class="ping-btn" onclick="ping()">&#128308; Ping</button>
 </div>
-
 <div class="tabs">
-  <div class="tab active" onclick="switchTab(0)">&#128197; Generate Itinerary</div>
-  <div class="tab" onclick="switchTab(1)">&#128205; Search Places</div>
-  <div class="tab" onclick="switchTab(2)">&#10024; Enrich Place</div>
-  <div class="tab" onclick="switchTab(3)">&#9925; Weather</div>
-  <div class="tab" onclick="switchTab(4)">&#128300; Raw API</div>
+  <div class="tab active" onclick="tab(0)">&#128197; Itinerary</div>
+  <div class="tab" onclick="tab(1)">&#128205; Places</div>
+  <div class="tab" onclick="tab(2)">&#10024; Enrich</div>
+  <div class="tab" onclick="tab(3)">&#9925; Weather</div>
+  <div class="tab" onclick="tab(4)">&#128300; Raw</div>
 </div>
-
 <main>
 
-<!-- ===== TAB 0: GENERATE ITINERARY ===== -->
-<div class="panel active" id="panel-0">
+<!-- TAB 0 -->
+<div class="panel active" id="p0">
   <div class="card">
-    <h2>&#128197; Generate AI Itinerary</h2>
-    <div class="form-row">
-      <div><label>Destination *</label><input id="g-dest" value="Chennai" placeholder="e.g. Chennai, Ooty, Goa"/></div>
+    <h2>&#128197; Generate Smart Itinerary</h2>
+    <div class="fr">
+      <div><label>Destination *</label><input id="g-dest" value="Chennai"/></div>
       <div><label>Days *</label><input id="g-days" type="number" value="2" min="1" max="14"/></div>
     </div>
-    <div class="form-row triple">
-      <div><label>Budget</label>
-        <select id="g-budget"><option value="low">Low (Budget)</option><option value="medium" selected>Medium</option><option value="high">High (Luxury)</option></select>
-      </div>
-      <div><label>Travel Type</label>
-        <select id="g-type"><option value="solo" selected>Solo</option><option value="couple">Couple</option><option value="family">Family</option><option value="group">Group</option></select>
-      </div>
-      <div><label>Mood/Theme</label>
-        <select id="g-mood"><option value="cultural" selected>Cultural</option><option value="relaxed">Relaxed</option><option value="adventure">Adventure</option><option value="spiritual">Spiritual</option><option value="romantic">Romantic</option><option value="foodie">Foodie</option></select>
+    <div class="fr t">
+      <div><label>Budget</label><select id="g-budget"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></div>
+      <div><label>Travel Type</label><select id="g-type"><option value="solo" selected>Solo</option><option value="couple">Couple</option><option value="family">Family</option><option value="group">Group</option></select></div>
+      <div><label>Mood</label><select id="g-mood"><option value="cultural" selected>Cultural</option><option value="relaxed">Relaxed</option><option value="adventure">Adventure</option><option value="spiritual">Spiritual</option><option value="romantic">Romantic</option><option value="foodie">Foodie</option></select></div>
+    </div>
+    <div style="margin-bottom:12px">
+      <label>Interests</label>
+      <div class="cbg">
+        <label><input type="checkbox" value="temples" checked>Temples</label>
+        <label><input type="checkbox" value="beach" checked>Beach</label>
+        <label><input type="checkbox" value="history">History</label>
+        <label><input type="checkbox" value="food" checked>Food</label>
+        <label><input type="checkbox" value="shopping">Shopping</label>
+        <label><input type="checkbox" value="nature">Nature</label>
+        <label><input type="checkbox" value="art">Art & Culture</label>
+        <label><input type="checkbox" value="adventure">Adventure</label>
       </div>
     </div>
-    <div style="margin-bottom:14px">
-      <label>Interests (select all that apply)</label>
-      <div class="checkbox-group">
-        <label><input type="checkbox" value="temples" checked> Temples</label>
-        <label><input type="checkbox" value="beach" checked> Beach</label>
-        <label><input type="checkbox" value="history"> History</label>
-        <label><input type="checkbox" value="food" checked> Food</label>
-        <label><input type="checkbox" value="shopping"> Shopping</label>
-        <label><input type="checkbox" value="nature"> Nature</label>
-        <label><input type="checkbox" value="art"> Art & Culture</label>
-        <label><input type="checkbox" value="adventure"> Adventure</label>
-      </div>
-    </div>
-    <div class="form-row">
+    <div class="fr">
       <div><label>Travel Date (optional)</label><input id="g-date" type="date"/></div>
-      <div style="display:flex;gap:20px;align-items:flex-end;padding-bottom:2px">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.85rem;color:#e2e8f0">
-          <input type="checkbox" id="g-crowd" style="width:auto"> Avoid Crowded
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.85rem;color:#e2e8f0">
-          <input type="checkbox" id="g-access" style="width:auto"> Accessibility Needs
-        </label>
+      <div style="display:flex;gap:18px;align-items:flex-end;padding-bottom:2px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.84rem;color:#e2e8f0"><input type="checkbox" id="g-crowd" style="width:auto">Avoid Crowded</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.84rem;color:#e2e8f0"><input type="checkbox" id="g-access" style="width:auto">Accessibility</label>
       </div>
     </div>
-    <button class="btn" id="gen-btn" onclick="generateItinerary()">
-      <span id="gen-icon">&#9889;</span> Generate Itinerary
-    </button>
+    <button class="btn" id="gb" onclick="genItinerary()"><span id="gi">⚡</span> Generate</button>
   </div>
-  <div class="result-box" id="gen-result"></div>
+  <div id="gr"></div>
 </div>
 
-<!-- ===== TAB 1: SEARCH PLACES ===== -->
-<div class="panel" id="panel-1">
+<!-- TAB 1 -->
+<div class="panel" id="p1">
   <div class="card">
-    <h2>&#128205; Search Tourist Places</h2>
-    <div class="form-row">
-      <div><label>Destination *</label><input id="sp-dest" value="Chennai" placeholder="City name"/></div>
-      <div><label>Category</label>
-        <select id="sp-cat">
-          <option value="tourist_attraction">All Attractions</option>
-          <option value="temple">Temples</option>
-          <option value="beach">Beach</option>
-          <option value="museum">Museum</option>
-          <option value="park">Park</option>
-          <option value="food">Food & Restaurants</option>
-          <option value="shopping">Shopping</option>
-          <option value="heritage">Heritage Sites</option>
-        </select>
-      </div>
+    <h2>&#128205; Search Places</h2>
+    <div class="fr">
+      <div><label>Destination *</label><input id="sp-d" value="Chennai"/></div>
+      <div><label>Category</label><select id="sp-c"><option value="tourist_attraction">All</option><option value="temple">Temple</option><option value="beach">Beach</option><option value="museum">Museum</option><option value="park">Park</option><option value="food">Food</option><option value="shopping">Shopping</option><option value="heritage">Heritage</option></select></div>
     </div>
-    <div class="form-row single">
-      <div><label>Limit (max 30)</label><input id="sp-limit" type="number" value="10" min="1" max="30"/></div>
-    </div>
-    <button class="btn" id="sp-btn" onclick="searchPlaces()">
-      <span id="sp-icon">&#128269;</span> Search Places
-    </button>
+    <div class="fr s"><div><label>Limit</label><input id="sp-l" type="number" value="10" min="1" max="30"/></div></div>
+    <button class="btn" id="spb" onclick="searchPlaces()"><span id="spi">🔍</span> Search</button>
   </div>
-  <div class="result-box" id="sp-result"></div>
+  <div id="spr"></div>
 </div>
 
-<!-- ===== TAB 2: ENRICH PLACE ===== -->
-<div class="panel" id="panel-2">
+<!-- TAB 2 -->
+<div class="panel" id="p2">
   <div class="card">
-    <h2>&#10024; Enrich Place Details (via Groq)</h2>
-    <div class="form-row">
-      <div><label>Place Name *</label><input id="ep-name" value="Kapaleeshwarar Temple" placeholder="e.g. Marina Beach"/></div>
-      <div><label>City *</label><input id="ep-city" value="Chennai" placeholder="e.g. Chennai"/></div>
+    <h2>&#10024; Enrich Place (Groq)</h2>
+    <div class="fr">
+      <div><label>Place Name *</label><input id="ep-n" value="Kapaleeshwarar Temple"/></div>
+      <div><label>City *</label><input id="ep-c" value="Chennai"/></div>
     </div>
-    <button class="btn" id="ep-btn" onclick="enrichPlace()">
-      <span id="ep-icon">&#10024;</span> Enrich Place
-    </button>
+    <button class="btn" id="epb" onclick="enrichPlace()"><span id="epi">✨</span> Enrich</button>
   </div>
-  <div class="result-box" id="ep-result"></div>
+  <div id="epr"></div>
 </div>
 
-<!-- ===== TAB 3: WEATHER ===== -->
-<div class="panel" id="panel-3">
+<!-- TAB 3 -->
+<div class="panel" id="p3">
   <div class="card">
     <h2>&#9925; Weather Forecast</h2>
-    <div class="form-row">
-      <div><label>City *</label><input id="w-city" value="Chennai" placeholder="City name"/></div>
-      <div><label>Days (1–7)</label><input id="w-days" type="number" value="3" min="1" max="7"/></div>
+    <div class="fr">
+      <div><label>City *</label><input id="wc" value="Chennai"/></div>
+      <div><label>Days</label><input id="wd" type="number" value="3" min="1" max="7"/></div>
     </div>
-    <button class="btn" id="w-btn" onclick="getWeather()">
-      <span id="w-icon">&#9925;</span> Get Forecast
-    </button>
+    <button class="btn" id="wb" onclick="getWeather()"><span id="wi">⛅</span> Forecast</button>
   </div>
-  <div class="result-box" id="w-result"></div>
+  <div id="wr"></div>
 </div>
 
-<!-- ===== TAB 4: RAW API ===== -->
-<div class="panel" id="panel-4">
+<!-- TAB 4 -->
+<div class="panel" id="p4">
   <div class="card">
-    <h2>&#128300; Raw API Tester</h2>
-    <div class="form-row">
-      <div><label>Method</label>
-        <select id="raw-method">
-          <option>GET</option><option selected>POST</option><option>PUT</option><option>DELETE</option>
-        </select>
-      </div>
-      <div><label>Endpoint (relative)</label><input id="raw-endpoint" value="/api/itinerary/generate" placeholder="/api/..."/></div>
+    <h2>&#128300; Raw API</h2>
+    <div class="fr">
+      <div><label>Method</label><select id="rm"><option>GET</option><option selected>POST</option></select></div>
+      <div><label>Endpoint</label><input id="re" value="/api/itinerary/generate"/></div>
     </div>
-    <div class="form-row single">
-      <div>
-        <label>Request Body (JSON)</label>
-        <textarea id="raw-body" rows="8" placeholder="{...}">{"destination":"Chennai","days":1,"budget":"medium","travel_type":"solo","mood":"cultural","interests":["temples","beach","food"]}</textarea>
-      </div>
-    </div>
-    <button class="btn" id="raw-btn" onclick="rawRequest()">
-      <span id="raw-icon">&#128640;</span> Send Request
-    </button>
+    <div class="fr s"><div><label>Body (JSON)</label><textarea id="rb" rows="8">{"destination":"Chennai","days":1,"budget":"medium","travel_type":"solo","mood":"cultural","interests":["temples","beach","food"]}</textarea></div></div>
+    <button class="btn" id="rawb" onclick="rawReq()"><span id="rawi">🚀</span> Send</button>
   </div>
-  <div class="result-box" id="raw-result"></div>
+  <div id="rawr"></div>
 </div>
 
 </main>
-
 <script>
-const BASE = ''  // Same origin — served from FastAPI at /test
+const BASE=''
+const SLOT_ICONS={morning:'🌅',afternoon:'☀️',evening:'🌇',night:'🌙'}
+const SLOT_COLORS={morning:'fbbf24',afternoon:'34d399',evening:'f97316',night:'a78bfa'}
 
-// ──────────── TAB SWITCHING ────────────
-function switchTab(i) {
+function tab(i){
   document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle('active',i===j))
   document.querySelectorAll('.panel').forEach((p,j)=>p.classList.toggle('active',i===j))
 }
-
-// ──────────── PING ────────────
-async function ping() {
-  const dot = document.getElementById('statusDot')
-  const txt = document.getElementById('statusText')
+async function ping(){
+  const dot=document.getElementById('dot'),txt=document.getElementById('stxt')
   dot.className='';txt.textContent='Pinging...'
-  try {
-    const r = await fetch(BASE+'/health')
-    const d = await r.json()
-    dot.className='on'
-    txt.textContent=`✅ Server online — ${d.llm} | env: ${d.env}`
-  } catch {
-    dot.className=''
-    txt.textContent='❌ Server offline — start with: uvicorn main:app --reload'
-  }
+  try{const r=await fetch(BASE+'/health');const d=await r.json();dot.className='on';txt.textContent=`✅ Online — ${d.llm} | ${d.env}`}
+  catch{dot.className='';txt.textContent='❌ Offline — run: uvicorn main:app --reload'}
 }
-
-// ──────────── HELPERS ────────────
-function setLoading(btnId, iconId, loading, label='') {
-  const btn=document.getElementById(btnId), icon=document.getElementById(iconId)
-  btn.disabled=loading
-  if(loading){icon.className='spinner';icon.textContent=''}
-  else{icon.className='';icon.textContent=label}
+function setLoad(bid,iid,on,lbl=''){
+  const b=document.getElementById(bid),ic=document.getElementById(iid)
+  b.disabled=on
+  if(on){ic.className='spinner';ic.textContent=''}
+  else{ic.className='';ic.textContent=lbl}
 }
-
-function renderMeta(ok, ms, extra='') {
-  return `<div class="result-meta">
-    <span class="badge ${ok?'success':'error'}">${ok?'✅ Success':'❌ Error'}</span>
-    <span class="badge info">⏱ ${ms}ms</span>
-    ${extra}
-  </div>`
+function meta(ok,ms,extras=''){
+  return `<div class="rmeta"><span class="badge ${ok?'ok':'err'}">${ok?'✅ Success':'❌ Error'}</span><span class="badge info">⏱ ${ms}ms</span>${extras}</div>`
 }
-
-function renderRaw(data, id) {
-  return `<span class="raw-toggle" onclick="toggleRaw('${id}')">{ } Toggle Raw JSON</span>
-    <div class="raw-json" id="raw-${id}">${JSON.stringify(data,null,2)}</div>`
-}
-
-function toggleRaw(id) {
-  const el=document.getElementById('raw-'+id)
+function rawToggle(id){
+  const el=document.getElementById('rj-'+id)
   el.style.display=el.style.display==='block'?'none':'block'
 }
 
-// ──────────── 1. GENERATE ITINERARY ────────────
-async function generateItinerary() {
-  const interests = [...document.querySelectorAll('.checkbox-group input:checked')].map(c=>c.value)
-  const body = {
-    destination: document.getElementById('g-dest').value.trim(),
-    days: parseInt(document.getElementById('g-days').value),
-    budget: document.getElementById('g-budget').value,
-    travel_type: document.getElementById('g-type').value,
-    mood: document.getElementById('g-mood').value,
-    interests,
-    travel_dates: document.getElementById('g-date').value || null,
-    avoid_crowded: document.getElementById('g-crowd').checked,
-    accessibility_needs: document.getElementById('g-access').checked
+// ===== GENERATE ITINERARY =====
+async function genItinerary(){
+  const ints=[...document.querySelectorAll('.cbg input:checked')].map(c=>c.value)
+  const body={
+    destination:document.getElementById('g-dest').value.trim(),
+    days:+document.getElementById('g-days').value,
+    budget:document.getElementById('g-budget').value,
+    travel_type:document.getElementById('g-type').value,
+    mood:document.getElementById('g-mood').value,
+    interests:ints,
+    travel_dates:document.getElementById('g-date').value||null,
+    avoid_crowded:document.getElementById('g-crowd').checked,
+    accessibility_needs:document.getElementById('g-access').checked
   }
   if(!body.destination){alert('Enter a destination');return}
-  setLoading('gen-btn','gen-icon',true)
+  setLoad('gb','gi',true)
   const t0=Date.now()
-  try {
+  try{
     const r=await fetch(BASE+'/api/itinerary/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-    const d=await r.json()
-    const ms=Date.now()-t0
-    if(!r.ok) throw d
-    renderItinerary(d, ms)
-  } catch(e) {
-    document.getElementById('gen-result').innerHTML=renderMeta(false,Date.now()-t0)+
-      `<div class="warning-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
-  } finally { setLoading('gen-btn','gen-icon',false,'⚡ Generate Itinerary') }
+    const d=await r.json();const ms=Date.now()-t0
+    if(!r.ok)throw d
+    renderItinerary(d,ms)
+  }catch(e){
+    document.getElementById('gr').innerHTML=meta(false,Date.now()-t0)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
+  }finally{setLoad('gb','gi',false,'⚡ Generate')}
 }
 
-function renderItinerary(d, ms) {
-  const meta=d.meta||{}
-  let html=renderMeta(true,ms,
-    `<span class="badge info">${d.itinerary?.length} stops</span>`+
-    `<span class="badge info">🏙️ ${meta.destination} • ${meta.days}d • ${meta.travel_type} • ${meta.budget}</span>`
+function renderItinerary(d,ms){
+  const m=d.meta||{}
+  let html=meta(true,ms,
+    `<span class="badge info">${m.total_places} places</span>`+
+    `<span class="badge info">🗺️ ${m.destination} • ${m.days}d</span>`+
+    (m.unscheduled_count?`<span class="badge warn">⚠️ ${m.unscheduled_count} unscheduled</span>`:'')
   )
-  if(d.weather_warnings?.length) {
-    d.weather_warnings.forEach(w=>html+=`<div class="warning-banner">${w}</div>`)
-  }
+
+  if(d.weather_warnings?.length)
+    d.weather_warnings.forEach(w=>html+=`<div class="warn-banner">${w}</div>`)
+
   // Group by day
   const byDay={}
   ;(d.itinerary||[]).forEach(s=>{(byDay[s.day]=byDay[s.day]||[]).push(s)})
-  html+='<div class="itinerary-days">'
-  Object.entries(byDay).forEach(([day,stops])=>{
-    html+=`<div><div class="day-header">🗓️ Day ${day}</div><div class="stops-grid">`
-    stops.forEach(s=>{
-      const fee=s.entry_fee===0?'Free':(s.entry_fee?`₹${s.entry_fee}`:'')
-      html+=`<div class="stop-card">
-        <div class="stop-time">${s.time||''}</div>
-        <div>
-          <div class="stop-name">${s.place_name}</div>
-          <div class="stop-meta">
-            ${s.category?`<span>🏷️ ${s.category}</span>`:''}
-            ${s.duration_hrs?`<span>⏱ ${s.duration_hrs}h</span>`:''}
-            ${s.lat?`<span>📍 ${s.lat?.toFixed(3)}, ${s.lon?.toFixed(3)}</span>`:''}
+
+  // Build slot_template lookup: slot_id -> meal_gap_after
+  const slotInfo={}
+  ;(d.slot_template||[]).forEach(s=>{
+    slotInfo[s.slot_id]={meal_gap:s.meal_gap_after,remaining:s.remaining_mins}
+  })
+
+  Object.entries(byDay).sort((a,b)=>+a[0]-+b[0]).forEach(([day,stops])=>{
+    html+=`<div class="day-section"><div class="day-header">🗓️ Day ${day}</div>`
+
+    // Group by slot
+    const bySlot={}
+    stops.forEach(s=>{(bySlot[s.slot_name]=bySlot[s.slot_name]||[]).push(s)})
+    const slotOrder=['morning','afternoon','evening','night']
+
+    slotOrder.forEach(sn=>{
+      const slotStops=bySlot[sn]
+      // Meal gap BEFORE this slot (from previous slot's meal_gap_after)
+      const prevIdx=slotOrder.indexOf(sn)-1
+      if(prevIdx>=0){
+        const prevSlotId=`day${day}_${slotOrder[prevIdx]}`
+        const gap=slotInfo[prevSlotId]?.meal_gap
+        if(gap) html+=`<div class="meal-gap" onclick="void(0)">🍽️ ${gap} <span style="margin-left:auto;font-size:.68rem;color:#3b82f6">+ Add meal</span></div>`
+      }
+
+      if(!slotStops?.length) return
+      const ic=SLOT_ICONS[sn]||''
+      const col=SLOT_COLORS[sn]||'94a3b8'
+      html+=`<div class="slot-section"><div class="slot-header ${sn}" style="border-left:3px solid #${col};padding-left:10px">${ic} ${sn.toUpperCase()}</div>`
+
+      slotStops.forEach((s,idx)=>{
+        if(idx>0&&s.travel_mins_from_prev>0)
+          html+=`<div class="travel-row">🚗 ${s.travel_mins_from_prev} min travel</div>`
+        const fee=s.entry_fee===0?'Free':(s.entry_fee?`₹${s.entry_fee}`:'')
+        html+=`<div class="stop-card${s.is_alternate?' alt-card':''}">
+          <div class="stop-time-col">
+            <div class="stop-time">${s.start_time}</div>
+            <div class="stop-end-time">${s.end_time}</div>
+            <div style="font-size:.65rem;color:#475569;margin-top:3px">${s.duration_hrs}h</div>
           </div>
-          ${s.tip?`<div class="stop-tip">💡 ${s.tip}</div>`:''}
-        </div>
-        ${fee?`<span class="stop-fee">${fee}</span>`:''}
+          <div class="stop-body">
+            <div class="stop-name">
+              ${s.place_name}
+              ${s.is_alternate?'<span class="badge alt">alt</span>':''}
+              ${s.priority>=5?'<span class="badge warn">⭐must</span>':''}
+            </div>
+            <div class="stop-meta">
+              ${s.category?`<span>🏷️ ${s.category}</span>`:''}
+              ${s.lat?`<span>📍 ${s.lat?.toFixed(3)},${s.lon?.toFixed(3)}</span>`:''}
+              ${s.why_must_visit?`<span style="color:#94a3b8">${s.why_must_visit}</span>`:''}
+            </div>
+            ${s.tip?`<div class="stop-tip">💡 ${s.tip}</div>`:''}
+          </div>
+          ${fee?`<span class="stop-fee">${fee}</span>`:''}
+        </div>`
+      })
+      html+='</div>'
+    })
+    html+='</div>'
+  })
+
+  // Unscheduled section
+  if(d.unscheduled?.length){
+    html+=`<div class="unsched-section"><div class="unsched-header">⚠️ ${d.unscheduled.length} places couldn't be scheduled (slot full / conflict)</div>`
+    d.unscheduled.forEach(u=>{
+      html+=`<div class="unsched-item">
+        <div><strong style="font-size:.86rem">${u.place_name}</strong><span style="color:#64748b;font-size:.74rem;margin-left:8px">${u.category||''} • ${u.duration_hrs}h • pref: ${u.best_slot||'any'}</span></div>
+        <span class="badge warn">unscheduled</span>
       </div>`
     })
-    html+='</div></div>'
-  })
-  html+='</div>'
-  html+=renderRaw(d,'gen')
-  document.getElementById('gen-result').innerHTML=html
+    html+='</div>'
+  }
+
+  html+=`<span class="raw-toggle" onclick="rawToggle('gen')">{ } Raw JSON</span><div class="raw-json" id="rj-gen">${JSON.stringify(d,null,2)}</div>`
+  document.getElementById('gr').innerHTML=html
 }
 
-// ──────────── 2. SEARCH PLACES ────────────
-async function searchPlaces() {
-  const dest=document.getElementById('sp-dest').value.trim()
-  const cat=document.getElementById('sp-cat').value
-  const limit=document.getElementById('sp-limit').value
-  if(!dest){alert('Enter a destination');return}
-  setLoading('sp-btn','sp-icon',true)
+// ===== SEARCH PLACES =====
+async function searchPlaces(){
+  const dest=document.getElementById('sp-d').value.trim()
+  const cat=document.getElementById('sp-c').value
+  const lim=document.getElementById('sp-l').value
+  if(!dest){alert('Enter destination');return}
+  setLoad('spb','spi',true)
   const t0=Date.now()
-  try {
-    const r=await fetch(`${BASE}/api/places/search?destination=${encodeURIComponent(dest)}&category=${cat}&limit=${limit}`)
-    const d=await r.json()
-    const ms=Date.now()-t0
-    if(!r.ok) throw d
-    let html=renderMeta(true,ms,`<span class="badge info">${d.count} places found</span>`)
-    if(d.count===0){
-      html+=`<div class="no-result">🔍 No places found. Try a different category or check API keys in .env</div>`
-    } else {
+  try{
+    const r=await fetch(`${BASE}/api/places/search?destination=${encodeURIComponent(dest)}&category=${cat}&limit=${lim}`)
+    const d=await r.json();const ms=Date.now()-t0
+    if(!r.ok)throw d
+    let html=meta(true,ms,`<span class="badge info">${d.count} found</span>`)
+    if(!d.count)html+=`<div class="empty">🔍 No results. Check your API keys in .env</div>`
+    else{
       html+='<div class="places-grid">'
-      d.places.forEach(p=>{
-        html+=`<div class="place-card">
-          <div class="place-name">${p.place_name||'Unknown'}</div>
-          <div class="place-meta">
-            ${p.address?`<div>📍 ${p.address}</div>`:''}
-            ${p.rating?`<div>⭐ ${p.rating}</div>`:''}
-            ${p.opening_hours?`<div>⏰ ${p.opening_hours}</div>`:''}
-            <div style="color:#475569;font-size:.7rem;margin-top:4px">${p.source}</div>
-          </div>
-        </div>`
-      })
+      d.places.forEach(p=>{html+=`<div class="place-card"><div class="place-name">${p.place_name}</div><div class="place-meta">${p.address?`<div>📍 ${p.address}</div>`:''} ${p.rating?`<div>⭐ ${p.rating}</div>`:''}<div style="color:#475569;font-size:.69rem;margin-top:3px">${p.source}</div></div></div>`})
       html+='</div>'
     }
-    html+=renderRaw(d,'sp')
-    document.getElementById('sp-result').innerHTML=html
-  } catch(e) {
-    document.getElementById('sp-result').innerHTML=renderMeta(false,Date.now()-t0)+
-      `<div class="warning-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
-  } finally { setLoading('sp-btn','sp-icon',false,'🔍 Search Places') }
+    html+=`<span class="raw-toggle" onclick="rawToggle('sp')">{ } Raw JSON</span><div class="raw-json" id="rj-sp">${JSON.stringify(d,null,2)}</div>`
+    document.getElementById('spr').innerHTML=html
+  }catch(e){
+    document.getElementById('spr').innerHTML=meta(false,Date.now()-t0)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
+  }finally{setLoad('spb','spi',false,'🔍 Search')}
 }
 
-// ──────────── 3. ENRICH PLACE ────────────
-async function enrichPlace() {
-  const name=document.getElementById('ep-name').value.trim()
-  const city=document.getElementById('ep-city').value.trim()
-  if(!name||!city){alert('Enter place name and city');return}
-  setLoading('ep-btn','ep-icon',true)
+// ===== ENRICH PLACE =====
+async function enrichPlace(){
+  const name=document.getElementById('ep-n').value.trim()
+  const city=document.getElementById('ep-c').value.trim()
+  if(!name||!city){alert('Enter place and city');return}
+  setLoad('epb','epi',true)
   const t0=Date.now()
-  try {
+  try{
     const r=await fetch(BASE+'/api/places/enrich',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({place_name:name,city})})
-    const d=await r.json()
-    const ms=Date.now()-t0
-    if(!r.ok) throw d
-    let html=renderMeta(true,ms,`<span class="badge info">${name}, ${city}</span>`)
-    html+='<div class="enrich-result">'
-    const fields=[
-      ['opening_hours','⏰ Opening Hours'],['closed_on','🚪 Closed On'],
-      ['entry_fee_indian','🇮🇳 Indian Entry Fee'],['entry_fee_foreign','🌍 Foreign Entry Fee'],
-      ['best_time_to_visit','☀️ Best Time'],['avg_visit_duration_hrs','⏱ Avg Duration (hrs)'],
-      ['local_tip','💡 Local Tip'],['nearby_food','🍽️ Nearby Food']
-    ]
-    fields.forEach(([k,label])=>{
-      const v=d[k]
-      if(v===undefined||v===null) return
-      const val=Array.isArray(v)?v.join(', '):(typeof v==='number'&&k.includes('fee')?`₹${v}`:v)
-      html+=`<div class="enrich-item"><div class="enrich-label">${label}</div><div class="enrich-value">${val||'N/A'}</div></div>`
+    const d=await r.json();const ms=Date.now()-t0
+    if(!r.ok)throw d
+    let html=meta(true,ms,`<span class="badge info">${name}</span>`)
+    html+='<div class="enrich-grid">'
+    const F=[['opening_hours','⏰ Hours'],['closed_on','🚪 Closed'],['entry_fee_indian','🇮🇳 Indian Fee'],['entry_fee_foreign','🌍 Foreign Fee'],['best_time_to_visit','☀️ Best Time'],['avg_visit_duration_hrs','⏱ Duration (hrs)'],['local_tip','💡 Tip'],['nearby_food','🍽️ Nearby Food']]
+    F.forEach(([k,l])=>{
+      const v=d[k];if(v===undefined||v===null)return
+      const val=Array.isArray(v)?v.join(', '):(k.includes('fee')&&typeof v==='number'?`₹${v}`:v)
+      html+=`<div class="enrich-item"><div class="enrich-label">${l}</div><div class="enrich-value">${val}</div></div>`
     })
-    html+='</div>'+renderRaw(d,'ep')
-    document.getElementById('ep-result').innerHTML=html
-  } catch(e) {
-    document.getElementById('ep-result').innerHTML=renderMeta(false,Date.now()-t0)+
-      `<div class="warning-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
-  } finally { setLoading('ep-btn','ep-icon',false,'✨ Enrich Place') }
+    html+=`</div><span class="raw-toggle" onclick="rawToggle('ep')">{ } Raw JSON</span><div class="raw-json" id="rj-ep">${JSON.stringify(d,null,2)}</div>`
+    document.getElementById('epr').innerHTML=html
+  }catch(e){
+    document.getElementById('epr').innerHTML=meta(false,Date.now()-t0)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
+  }finally{setLoad('epb','epi',false,'✨ Enrich')}
 }
 
-// ──────────── 4. WEATHER ────────────
-async function getWeather() {
-  const city=document.getElementById('w-city').value.trim()
-  const days=document.getElementById('w-days').value
-  if(!city){alert('Enter a city');return}
-  setLoading('w-btn','w-icon',true)
+// ===== WEATHER =====
+async function getWeather(){
+  const city=document.getElementById('wc').value.trim()
+  const days=document.getElementById('wd').value
+  if(!city){alert('Enter city');return}
+  setLoad('wb','wi',true)
   const t0=Date.now()
-  try {
+  try{
     const r=await fetch(`${BASE}/api/weather/forecast?city=${encodeURIComponent(city)}&days=${days}`)
-    const d=await r.json()
-    const ms=Date.now()-t0
-    if(!r.ok) throw d
-    let html=renderMeta(true,ms,`<span class="badge ${d.has_warnings?'warn':'success'}">${d.has_warnings?'⚠️ Has Warnings':'✅ Clear Weather'}</span>`)
-    if(d.warnings?.length){
-      d.warnings.forEach(w=>html+=`<div class="warning-banner">${w}</div>`)
-    }
-    if(!d.forecast?.length){
-      html+=`<div class="no-result">💬 No forecast data. Add OPENWEATHER_API_KEY to .env to enable weather.</div>`
-    } else {
-      html+='<div class="weather-grid">'
+    const d=await r.json();const ms=Date.now()-t0
+    if(!r.ok)throw d
+    let html=meta(true,ms,`<span class="badge ${d.has_warnings?'warn':'ok'}">${d.has_warnings?'⚠️ Warnings':'✅ Clear'}</span>`)
+    if(d.warnings?.length)d.warnings.forEach(w=>html+=`<div class="warn-banner">${w}</div>`)
+    if(!d.forecast?.length)html+=`<div class="empty">💬 Add OPENWEATHER_API_KEY to .env</div>`
+    else{
+      html+='<div class="w-grid">'
       d.forecast.forEach(f=>{
-        const hasWarn=!!f.warning
-        html+=`<div class="weather-card" style="${hasWarn?'border-color:#92400e':''}">  
-          <div class="weather-date">${f.date}</div>
-          <div class="weather-temp">${Math.round(f.temp_min)}° – ${Math.round(f.temp_max)}°C</div>
-          <div class="weather-condition">${f.conditions?.join(', ')||''}</div>
-          ${hasWarn?'<div style="font-size:.7rem;color:#fb923c;margin-top:6px">⚠️ Warning</div>':''}
+        html+=`<div class="w-card" style="${f.warning?'border-color:#92400e':''}">
+          <div style="font-size:.73rem;color:#64748b">${f.date}</div>
+          <div style="font-size:1.05rem;font-weight:700">${Math.round(f.temp_min)}°–${Math.round(f.temp_max)}°C</div>
+          <div style="font-size:.73rem;color:#94a3b8">${f.conditions?.join(', ')||''}</div>
+          ${f.warning?'<div style="font-size:.68rem;color:#fb923c;margin-top:5px">⚠️</div>':''}
         </div>`
       })
-      html+='</div>'
+      html+=`</div>`
     }
-    html+=renderRaw(d,'w')
-    document.getElementById('w-result').innerHTML=html
-  } catch(e) {
-    document.getElementById('w-result').innerHTML=renderMeta(false,Date.now()-t0)+
-      `<div class="warning-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
-  } finally { setLoading('w-btn','w-icon',false,'⛅ Get Forecast') }
+    html+=`<span class="raw-toggle" onclick="rawToggle('w')">{ } Raw JSON</span><div class="raw-json" id="rj-w">${JSON.stringify(d,null,2)}</div>`
+    document.getElementById('wr').innerHTML=html
+  }catch(e){
+    document.getElementById('wr').innerHTML=meta(false,Date.now()-t0)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
+  }finally{setLoad('wb','wi',false,'⛅ Forecast')}
 }
 
-// ──────────── 5. RAW REQUEST ────────────
-async function rawRequest() {
-  const method=document.getElementById('raw-method').value
-  const endpoint=document.getElementById('raw-endpoint').value.trim()
-  const bodyStr=document.getElementById('raw-body').value.trim()
-  setLoading('raw-btn','raw-icon',true)
+// ===== RAW =====
+async function rawReq(){
+  const m=document.getElementById('rm').value,e=document.getElementById('re').value.trim(),b=document.getElementById('rb').value.trim()
+  setLoad('rawb','rawi',true)
   const t0=Date.now()
-  try {
-    const opts={method,headers:{}}
-    if(['POST','PUT'].includes(method)&&bodyStr){
-      opts.headers['Content-Type']='application/json'
-      opts.body=bodyStr
-    }
-    const r=await fetch(BASE+endpoint,opts)
-    const d=await r.json()
-    const ms=Date.now()-t0
-    let html=renderMeta(r.ok,ms,`<span class="badge info">HTTP ${r.status}</span>`)
+  try{
+    const opts={method:m,headers:{}}
+    if(['POST','PUT'].includes(m)&&b){opts.headers['Content-Type']='application/json';opts.body=b}
+    const r=await fetch(BASE+e,opts);const d=await r.json();const ms=Date.now()-t0
+    let html=meta(r.ok,ms,`<span class="badge info">HTTP ${r.status}</span>`)
     html+=`<div class="raw-json" style="display:block">${JSON.stringify(d,null,2)}</div>`
-    document.getElementById('raw-result').innerHTML=html
-  } catch(e) {
-    document.getElementById('raw-result').innerHTML=renderMeta(false,Date.now()-t0)+
-      `<div class="warning-banner">${e.message}</div>`
-  } finally { setLoading('raw-btn','raw-icon',false,'🚀 Send Request') }
+    document.getElementById('rawr').innerHTML=html
+  }catch(e2){
+    document.getElementById('rawr').innerHTML=meta(false,Date.now()-t0)+`<div class="warn-banner">${e2.message}</div>`
+  }finally{setLoad('rawb','rawi',false,'🚀 Send')}
 }
 
-// Auto-ping on load
-window.addEventListener('load',()=>setTimeout(ping,500))
+window.addEventListener('load',()=>setTimeout(ping,400))
 </script>
 </body>
 </html>
