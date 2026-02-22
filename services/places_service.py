@@ -4,13 +4,22 @@ import httpx
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 
-load_dotenv()  # ← Must be before os.getenv() module-level reads
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 FOURSQUARE_API_KEY  = os.getenv("FOURSQUARE_API_KEY", "")
 GEOAPIFY_API_KEY    = os.getenv("GEOAPIFY_API_KEY", "")
 OPENTRIPMAP_API_KEY = os.getenv("OPENTRIPMAP_API_KEY", "")
+
+# Geoapify result_type values that represent a city/admin area, not a named place.
+# If Geoapify returns one of these types it means it couldn't find the specific
+# place and fell back to the city centroid — we discard such results to prevent
+# 8+ places clustering at the same city-centre coordinates.
+_GEOAPIFY_SKIP_TYPES = frozenset({
+    "city", "county", "state", "country", "region",
+    "district", "postcode", "unknown",
+})
 
 
 # ─────────────────────────────────────────
@@ -39,11 +48,16 @@ async def geocode_place(
     country: str = "India",
 ) -> Optional[Dict]:
     """
-    Geocode a specific place name anchored to its city/state/country so the
-    geocoder never matches a similarly-named place in a different region.
+    Geocode a specific place name anchored to its city/state/country.
 
-    Query format: "<place_name>, <city>, <state>, <country>"
-    Falls back to "<place_name>, <country>" if nothing found for the precise query.
+    Reject results whose Geoapify result_type is a city/admin area — this
+    prevents the well-known clustering bug where Geoapify returns the city
+    centroid (e.g. 9.9261, 78.1141 for Madurai) when it cannot find the
+    specific place, causing 8+ places to share the same coordinates.
+
+    Query order:
+      1. "<place>, <city>, <state>, <country>"
+      2. "<place>, <state>, <country>"           (broader fallback)
     """
     if not GEOAPIFY_API_KEY:
         logger.warning("GEOAPIFY_API_KEY not set — geocoding skipped")
@@ -66,11 +80,20 @@ async def geocode_place(
                 if not data.get("features"):
                     continue
 
-                props    = data["features"][0]["properties"]
-                result_lat = props["lat"]
-                result_lon = props["lon"]
+                props       = data["features"][0]["properties"]
+                result_lat  = props["lat"]
+                result_lon  = props["lon"]
+                result_type = props.get("result_type", "").lower()
 
-                # ── Sanity-check: result must be within ~100 km of city ──
+                # ── Reject city/admin-area fallbacks ──────────────────────────────
+                if result_type in _GEOAPIFY_SKIP_TYPES:
+                    logger.warning(
+                        f"[geocode] '{place_name}': Geoapify returned result_type='{result_type}' "
+                        f"(city/admin fallback) — discarding [{query}]"
+                    )
+                    continue
+
+                # ── Distance sanity-check: result must be within ~100 km of city ──
                 city_coords = await geocode_city(city)
                 if city_coords:
                     import math
@@ -92,7 +115,7 @@ async def geocode_place(
 
                 logger.debug(
                     f"[geocode] '{place_name}' → ({result_lat:.5f}, {result_lon:.5f})"
-                    f"  [query='{query}']"
+                    f"  type='{result_type}'  [query='{query}']"
                 )
                 return {"lat": result_lat, "lon": result_lon}
 

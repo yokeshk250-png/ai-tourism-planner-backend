@@ -107,22 +107,12 @@ def _parse_time_str(s: str) -> Optional[int]:
 def _parse_sessions(opening_hours: str) -> List[Tuple[int, int]]:
     """
     Parse opening_hours into a list of (open_mins, close_mins) sessions.
-
-    Handles both single-session and multi-session (comma-separated) formats:
-      • "9:00 AM - 6:00 PM"                  → [(540, 1080)]
-      • "5:30 AM - 12:00 PM, 4:00 PM - 8:00 PM" → [(330, 720), (960, 1200)]
-      • "09:00-18:00"                         → [(540, 1080)]
-
-    Returns [] if nothing parseable is found.
     """
     s = opening_hours.strip()
     if re.search(r"(24/7|open\s*24|always\s*open)", s, re.IGNORECASE):
         return [(0, 24 * 60)]
 
     sessions: List[Tuple[int, int]] = []
-
-    # Split on comma or semicolon, then try to extract a pair of time tokens
-    # from each chunk.  This handles "X AM - Y PM, A PM - B PM" correctly.
     chunks = re.split(r",|;", s)
     for chunk in chunks:
         chunk = chunk.strip()
@@ -133,7 +123,7 @@ def _parse_sessions(opening_hours: str) -> List[Tuple[int, int]]:
         t2 = _parse_time_str(tokens[-1].strip())
         if t1 is None or t2 is None:
             continue
-        if t2 <= t1:          # overnight wrap (e.g. 10 PM – 2 AM)
+        if t2 <= t1:
             t2 += 24 * 60
         sessions.append((t1, t2))
 
@@ -141,11 +131,6 @@ def _parse_sessions(opening_hours: str) -> List[Tuple[int, int]]:
 
 
 def _parse_daily_range(opening_hours: str) -> Optional[Tuple[int, int]]:
-    """
-    Legacy single-range helper kept for validate_candidate_slots / _first_valid_slot.
-    Returns the UNION envelope (earliest open, latest close) across all sessions.
-    For multi-session hours callers should use _parse_sessions() directly.
-    """
     sessions = _parse_sessions(opening_hours)
     if not sessions:
         return None
@@ -222,23 +207,17 @@ def is_open_for_slot(
     """
     Check whether a place can be visited during a slot.
 
-    Returns a 3-tuple:
-        (open_ok, reason, clamped_start_mins)
+    Returns (open_ok, reason, clamped_start_mins).
 
-    open_ok:
-        True   — confirmed open and duration fits
-        False  — confirmed closed / won't fit  → skip slot
-        None   — unknown / unparseable          → schedule with warning
-
-    clamped_start_mins:
-        The actual minute-of-day when the visit can BEGIN, accounting for
-        when the place opens (max(slot_start, place_open)).  None when
-        open_ok is not True.
+    clamped_start_mins is max(slot_start_mins, place_open_mins) — i.e. the
+    earliest minute inside the slot when the place is actually open.
+    This is then used by _compute_stop_times to push the display start time
+    forward if needed, but it must ALSO be combined with the slot cursor
+    (time already consumed by previous stops) in _compute_stop_times.
     """
     s_mins = _hm_to_mins(slot_start)
     e_mins = _hm_to_mins(slot_end)
 
-    # 1. closed_on list
     if closed_on and slot_date:
         wd = slot_date.weekday()
         for day_str in closed_on:
@@ -253,7 +232,6 @@ def is_open_for_slot(
     if low in ("24/7", "open24hrs", "open24hours", "open24h", "alwaysopen", "open24"):
         return (True, "", s_mins)
 
-    # 2. Multi-session daily schedule
     sessions = _parse_sessions(opening_hours)
     if sessions:
         for o, c in sessions:
@@ -261,7 +239,6 @@ def is_open_for_slot(
             visit_end   = visit_start + duration_mins
             if visit_end <= min(e_mins, c):
                 return (True, "", visit_start)
-        # Build a human-readable description of all sessions
         sess_str = ", ".join(
             f"{_mins_to_time(o)}-{_mins_to_time(c % (24*60))}" for o, c in sessions
         )
@@ -271,7 +248,6 @@ def is_open_for_slot(
             None,
         )
 
-    # 3. OSM weekday schedule
     osm = _parse_osm_schedule(opening_hours)
     if osm is not None:
         if slot_date is None:
@@ -308,10 +284,6 @@ _SLOT_WINDOWS = {
 
 
 def _first_valid_slot(opening_hours: str, duration_mins: int) -> Optional[str]:
-    """
-    Return the name of the first slot window where the place is open and
-    the duration fits.  Uses multi-session-aware _parse_sessions().
-    """
     sessions = _parse_sessions(opening_hours)
     if not sessions:
         return None
@@ -328,16 +300,6 @@ def _first_valid_slot(opening_hours: str, duration_mins: int) -> Optional[str]:
 
 
 def validate_candidate_slots(candidates: list) -> list:
-    """
-    Pre-scheduling pass: verify that each candidate's best_slot aligns
-    with its actual opening_hours (multi-session aware).
-
-    Outcomes:
-      1. No / unparseable hours → keep best_slot as-is.
-      2. best_slot valid → no change.
-      3. best_slot wrong → auto-correct to first truly-open slot.
-      4. No slot fits at all → set hours_conflict=True.
-    """
     for cand in candidates:
         name     = cand.get("place_name", "?")
         oh_str   = cand.get("opening_hours") or ""
@@ -443,17 +405,35 @@ def _compute_stop_times(
     Compute the actual start/end times for a stop.
 
     clamped_start: minute-of-day returned by is_open_for_slot() —
-      the point where the visit can actually begin (max(slot_start, place_open)).
-      When provided this overrides the raw slot-position calculation so the
-      displayed start_time is never earlier than when the place opens.
-    """
-    actual_t = _actual_travel(slot, travel_mins)
-    if clamped_start is not None:
+      max(slot_start, place_open). Indicates the earliest point inside the
+      slot window when the place is actually open.
+
+    BUG FIX (overlap): The previous implementation used:
         start_mins = clamped_start + actual_t
+    which ignored how far the slot cursor had already advanced due to prior
+    stops, causing time overlaps whenever clamped_start == slot_start and
+    multiple stops occupied the same slot.
+
+    Correct logic:
+        cursor_mins = slot_start + time_already_consumed_in_slot
+        start_mins  = max(cursor_mins, clamped_start) + actual_travel
+
+    This ensures:
+      1. We never go earlier than the slot cursor (no overlaps).
+      2. We never go earlier than when the place opens (clamped_start).
+      3. Travel time is always added on top.
+    """
+    actual_t   = _actual_travel(slot, travel_mins)
+    base_mins  = _hm_to_mins(slot["start_time"])
+    used_mins  = slot["available_mins"] - slot["remaining_mins"]
+    cursor_mins = base_mins + used_mins   # where the slot cursor is RIGHT NOW
+
+    if clamped_start is not None:
+        # Push forward to whichever is later: current cursor OR place-open time
+        start_mins = max(cursor_mins, clamped_start) + actual_t
     else:
-        base_mins  = _hm_to_mins(slot["start_time"])
-        used_mins  = slot["available_mins"] - slot["remaining_mins"]
-        start_mins = base_mins + used_mins + actual_t
+        start_mins = cursor_mins + actual_t
+
     end_mins = start_mins + int(duration_hrs * 60)
     return _mins_to_time(start_mins), _mins_to_time(end_mins)
 
@@ -475,7 +455,7 @@ def schedule_candidates(
     Step 1: Sort by priority descending.
     Step 2: For each candidate try preferred slot then fallbacks (day by day).
     Step 3: Multi-session opening hours + fit check (is_open_for_slot).
-    Step 4: Clamp displayed start_time to when the place actually opens.
+    Step 4: Clamp displayed start_time to max(cursor, place_open) to prevent overlaps.
     """
     candidates = validate_candidate_slots(candidates)
     sorted_cands = sorted(candidates, key=lambda c: -int(c.get("priority", 3)))
@@ -511,7 +491,6 @@ def schedule_candidates(
                     slot.get("last_lat"), slot.get("last_lon"), cand_lat, cand_lon
                 )
 
-                # ─ Multi-session opening hours check ─
                 open_ok, open_reason, clamped_start = is_open_for_slot(
                     oh_str, closed_on,
                     slot["start_time"], slot["end_time"],
@@ -523,31 +502,27 @@ def schedule_candidates(
                     )
                     continue
 
-                # ─ Duration + travel fit check ─
                 if not _fits_in_slot(cand, slot, travel_mins):
                     continue
 
-                # ─ Compute times — start clamped to place-open if known ─
+                # Compute times using cursor-aware clamping (prevents overlaps)
                 start_t, end_t = _compute_stop_times(
                     slot, travel_mins, duration_hrs, clamped_start
                 )
                 actual_t = _actual_travel(slot, travel_mins)
 
                 stop = {
-                    # ─ scheduling metadata ─
                     "day":                      day,
                     "slot_id":                  slot_id,
                     "slot_name":                slot["slot_name"],
                     "start_time":               start_t,
                     "end_time":                 end_t,
                     "travel_mins_from_prev":     actual_t,
-                    # ─ place identity ─
                     "place_name":               cand.get("place_name", "Unknown"),
                     "category":                 cand.get("category"),
                     "priority":                 int(cand.get("priority", 3)),
                     "why_must_visit":            cand.get("why_must_visit"),
                     "is_alternate":              bool(cand.get("is_alternate", False)),
-                    # ─ from enrich ─
                     "opening_hours":             oh_str,
                     "closed_on":                 closed_on or None,
                     "duration_hrs":              duration_hrs,
@@ -555,10 +530,8 @@ def schedule_candidates(
                     "entry_fee_foreign":         cand.get("entry_fee_foreign"),
                     "tip":                       cand.get("tip"),
                     "nearby_food":               cand.get("nearby_food"),
-                    # ─ from geocode ─
                     "lat":                       cand_lat,
                     "lon":                       cand_lon,
-                    # ─ flags ─
                     "opening_hours_unverified":  open_ok is None,
                     "hours_conflict":            bool(cand.get("hours_conflict", False)),
                 }
