@@ -40,6 +40,14 @@ SLOT_TEMPLATE = [
     },
 ]
 
+# Quick lookup: slot_name → (start_mins, end_mins)
+SLOT_WINDOWS: Dict[str, Tuple[int, int]] = {
+    t["slot_name"]: (_hm := lambda s: int(s.split(":")[0]) * 60 + int(s.split(":")[1]),
+                     _hm(t["start"]), _hm(t["end"]))[1:]
+    for t in SLOT_TEMPLATE
+}
+# Build properly after helpers are defined (see _SLOT_WINDOWS_INIT below)
+
 TRAVEL_SPEED_KMPH   = 20
 TRAVEL_BUFFER_MINS  = 10
 DEFAULT_TRAVEL_MINS = 15
@@ -256,6 +264,101 @@ def is_open_for_slot(
 
 
 # ─────────────────────────────────────────────────────────────
+# Pre-schedule: validate & auto-correct best_slot vs opening hours
+# ─────────────────────────────────────────────────────────────
+
+# Slot definitions for fast window lookup (name → (open_mins, close_mins))
+_SLOT_WINDOWS = {
+    "morning":   (_hm_to_mins("09:00"), _hm_to_mins("12:00")),
+    "afternoon": (_hm_to_mins("13:00"), _hm_to_mins("16:00")),
+    "evening":   (_hm_to_mins("16:30"), _hm_to_mins("19:30")),
+    "night":     (_hm_to_mins("20:00"), _hm_to_mins("21:30")),
+}
+
+
+def _first_valid_slot(opening_hours: str, duration_mins: int) -> Optional[str]:
+    """
+    Given an opening_hours string and required duration, return the name of
+    the FIRST slot window that the place is actually open for long enough.
+    Returns None if no slot fits (place cannot be scheduled at all).
+    """
+    daily = _parse_daily_range(opening_hours)
+    if not daily:
+        return None
+    o, c = daily
+
+    slot_order = ["morning", "afternoon", "evening", "night"]
+    for slot_name in slot_order:
+        s_mins, e_mins = _SLOT_WINDOWS[slot_name]
+        visit_start = max(s_mins, o)
+        visit_end   = visit_start + duration_mins
+        if visit_end <= min(e_mins, c):
+            return slot_name
+    return None
+
+
+def validate_candidate_slots(candidates: list) -> list:
+    """
+    Pre-scheduling pass: for every candidate, verify that its best_slot
+    actually overlaps with the place's opening_hours.
+
+    Three outcomes:
+      1. opening_hours missing/unparseable → keep best_slot as-is, flag warning.
+      2. best_slot is valid (place open + fits) → no change.
+      3. best_slot is WRONG (place closed in that slot) → auto-correct to the
+         first slot where the place IS open. If no slot fits at all, mark
+         candidate as `hours_conflict = True` (scheduler will still try; the
+         per-slot is_open_for_slot() check is the final arbiter).
+    """
+    for cand in candidates:
+        name     = cand.get("place_name", "?")
+        oh_str   = cand.get("opening_hours") or ""
+        pref     = (cand.get("best_slot") or "morning").lower()
+        dur_mins = int(float(cand.get("duration_hrs", 1.0)) * 60)
+
+        if not oh_str.strip():
+            logger.debug(f"[validate] '{name}': no opening_hours — keeping best_slot='{pref}'")
+            continue
+
+        low = oh_str.lower().replace(" ", "")
+        if low in ("24/7", "open24hrs", "open24hours", "open24h", "alwaysopen", "open24"):
+            logger.debug(f"[validate] '{name}': open 24/7 — any slot valid")
+            continue
+
+        daily = _parse_daily_range(oh_str)
+        if not daily:
+            logger.debug(f"[validate] '{name}': unparseable hours '{oh_str[:40]}' — keeping best_slot")
+            continue
+
+        o, c = daily
+        s_mins, e_mins = _SLOT_WINDOWS.get(pref, _SLOT_WINDOWS["morning"])
+        visit_start = max(s_mins, o)
+        visit_end   = visit_start + dur_mins
+
+        if visit_end <= min(e_mins, c):
+            # best_slot is fine
+            logger.debug(f"[validate] '{name}': best_slot='{pref}' ✔️ (open {_mins_to_time(o)}-{_mins_to_time(c % 1440)})")
+            continue
+
+        # best_slot is wrong — find a better one
+        corrected = _first_valid_slot(oh_str, dur_mins)
+        if corrected and corrected != pref:
+            logger.info(
+                f"[validate] '{name}': best_slot '{pref}' ✖ "
+                f"(opens {_mins_to_time(o)}, closes {_mins_to_time(c % 1440)}) → corrected to '{corrected}'"
+            )
+            cand["best_slot"] = corrected
+        elif not corrected:
+            logger.warning(
+                f"[validate] '{name}': NO slot fits "
+                f"(opens {_mins_to_time(o)}, closes {_mins_to_time(c % 1440)}, dur={dur_mins}min) — flagged"
+            )
+            cand["hours_conflict"] = True
+
+    return candidates
+
+
+# ─────────────────────────────────────────────────────────────
 # Slot builder
 # ─────────────────────────────────────────────────────────────
 def build_day_slots(days: int) -> List[Dict]:
@@ -327,17 +430,20 @@ def schedule_candidates(
     day_dates: Optional[Dict[int, date]] = None,
 ) -> Tuple[list, list]:
     """
-    Greedy scheduler: places candidates into time slots.
+    Greedy scheduler with pre-schedule opening hours validation.
 
-    By this point each candidate should be pre-enriched so that:
-      - opening_hours / closed_on   come from the enrich call (accurate)
-      - duration_hrs                comes from avg_visit_duration_hrs (accurate)
-      - best_slot                   comes from best_time_to_visit (accurate)
-      - entry_fee / entry_fee_foreign come from enrich fees
-      - nearby_food                 available for UI display
+    Step 0 (NEW): validate_candidate_slots() runs before scheduling.
+      • Checks every candidate's best_slot against its opening_hours.
+      • Auto-corrects best_slot to the first truly open slot.
+      • Flags candidates where NO slot fits as hours_conflict=True.
 
-    These enriched values are all passed through to the scheduled stop dict.
+    Step 1: Sort by priority descending.
+    Step 2: For each candidate, try preferred slot then all others (day by day).
+    Step 3: Opening hours + fit check per slot (is_open_for_slot + _fits_in_slot).
     """
+    # ── Step 0: pre-validate best_slot vs opening hours ──
+    candidates = validate_candidate_slots(candidates)
+
     sorted_cands = sorted(candidates, key=lambda c: -int(c.get("priority", 3)))
 
     slot_map  = {s["slot_id"]: s for s in slots}
@@ -415,8 +521,9 @@ def schedule_candidates(
                     # ─ from geocode ─
                     "lat":                    cand_lat,
                     "lon":                    cand_lon,
-                    # ─ scheduler flag ─
+                    # ─ scheduler flags ─
                     "opening_hours_unverified": open_ok is None,
+                    "hours_conflict":           bool(cand.get("hours_conflict", False)),
                 }
 
                 slot["remaining_mins"] -= (actual_t + duration_mins)
