@@ -2,7 +2,6 @@ import json
 import os
 import logging
 from dotenv import load_dotenv
-from openai import AsyncOpenAI, AuthenticationError, APIStatusError
 from models.schemas import TripRequest
 
 load_dotenv()
@@ -10,50 +9,68 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────
-# Lazy Perplexity client
+# Lazy Gemini client — initialized only on first call
+# Avoids crash at import time if GEMINI_API_KEY not yet loaded
 # ─────────────────────────────────────────────────────────────
-_client = None
+_model = None
 
-def get_client() -> AsyncOpenAI:
-    global _client
-    if _client is None:
-        api_key = os.getenv("PERPLEXITY_API_KEY")
-        if not api_key:
-            raise EnvironmentError(
-                "PERPLEXITY_API_KEY is not set.\n"
-                "Fix: Add PERPLEXITY_API_KEY=pplx-xxxx to your .env file.\n"
-                "Get key: https://www.perplexity.ai/settings/api"
-            )
-        # Reset cached client if key changes (e.g., during dev)
-        _client = AsyncOpenAI(
-            api_key=api_key,
-            base_url="https://api.perplexity.ai"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+
+def get_model():
+    """
+    Returns a cached Gemini GenerativeModel instance.
+    Raises a clear error if GEMINI_API_KEY is missing.
+    """
+    global _model
+    if _model is not None:
+        return _model
+
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        raise ImportError(
+            "google-generativeai package not installed.\n"
+            "Fix: pip install google-generativeai"
         )
-        logger.info(f"Perplexity client initialized (key: ...{api_key[-6:]})")
-    return _client
 
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise EnvironmentError(
+            "GEMINI_API_KEY is not set.\n"
+            "Fix: Add GEMINI_API_KEY=AIza... to your .env file.\n"
+            "Get key: https://aistudio.google.com/app/apikey"
+        )
 
-PERPLEXITY_MODEL = os.getenv("PERPLEXITY_MODEL", "sonar-pro")
+    genai.configure(api_key=api_key)
+    _model = genai.GenerativeModel(
+        model_name=GEMINI_MODEL,
+        generation_config={
+            "temperature": 0.2,
+            "max_output_tokens": 4096,
+            "response_mime_type": "application/json",   # Force JSON output
+        }
+    )
+    logger.info(f"Gemini client initialized ✅ (model: {GEMINI_MODEL}, key: ...{api_key[-6:]})")
+    return _model
 
 
 # ─────────────────────────────────────────────────────────────
-# Generate itinerary via Perplexity sonar-pro
+# Generate full itinerary via Gemini 1.5 Flash
 # ─────────────────────────────────────────────────────────────
 async def generate_itinerary_llm(req: TripRequest) -> list:
-    client = get_client()
-
-    system_prompt = """
-    You are an expert Indian travel planner with deep knowledge of tourist
-    destinations, local culture, timings, and travel logistics across India.
-    Always return factual, up-to-date information about places.
-    Return ONLY valid JSON — no markdown, no explanation, no extra text.
     """
+    Use Gemini 1.5 Flash to generate a structured day-wise itinerary.
+    Returns a list of PlaceStop dicts.
+    """
+    import asyncio
+    model = get_model()
 
-    user_prompt = f"""
-    Create a detailed {req.days}-day travel itinerary for {req.destination}, India.
+    prompt = f"""
+    You are an expert Indian travel planner. Create a detailed {req.days}-day travel
+    itinerary for {req.destination}, India.
 
     Traveller Profile:
-    - Budget: {req.budget}
+    - Budget: {req.budget} (low=budget | medium=mid-range | high=luxury)
     - Travel type: {req.travel_type}
     - Mood/Theme: {req.mood}
     - Interests: {', '.join(req.interests)}
@@ -64,14 +81,14 @@ async def generate_itinerary_llm(req: TripRequest) -> list:
     Planning Rules:
     1. Schedule places in logical geographic order to minimize travel time.
     2. Realistic timings: morning 06:00-12:00, afternoon 12:00-17:00, evening 17:00-21:00.
-    3. Include meal stops at breakfast (08:00), lunch (13:00), and dinner (19:30).
+    3. Include meal stops: breakfast (08:00), lunch (13:00), dinner (19:30).
     4. Estimate visit duration in hours for each stop.
-    5. Respect actual Indian attraction opening/closing hours.
+    5. Use actual Indian attraction opening/closing hours.
     6. Include entry fees in INR (0 if free).
-    7. Add a short local tip for each place (max 15 words).
+    7. Add a short practical local tip per place (max 15 words).
     8. Mix famous landmarks with lesser-known gems.
 
-    Return ONLY this exact JSON structure:
+    Return ONLY this JSON structure, no extra text:
     {{
       "itinerary": [
         {{
@@ -88,28 +105,26 @@ async def generate_itinerary_llm(req: TripRequest) -> list:
     """
 
     try:
-        response = await client.chat.completions.create(
-            model=PERPLEXITY_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user",   "content": user_prompt}
-            ],
-            temperature=0.2,
-            max_tokens=4000
+        # Gemini SDK is sync — run in thread pool to avoid blocking async server
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: model.generate_content(prompt)
         )
-    except AuthenticationError:
-        raise ValueError(
-            "Perplexity API key is invalid or expired (401 Unauthorized).\n"
-            "Fix: Update PERPLEXITY_API_KEY in your .env file.\n"
-            "Get a new key: https://www.perplexity.ai/settings/api"
-        )
-    except APIStatusError as e:
-        raise ValueError(f"Perplexity API error {e.status_code}: {e.message}")
+    except Exception as e:
+        err = str(e)
+        if "API_KEY_INVALID" in err or "API key not valid" in err:
+            raise ValueError(
+                "Gemini API key is invalid (403).\n"
+                "Fix: Update GEMINI_API_KEY in your .env file.\n"
+                "Get key: https://aistudio.google.com/app/apikey"
+            )
+        raise ValueError(f"Gemini API error: {err}")
 
-    raw = response.choices[0].message.content
-    logger.debug(f"Raw LLM response (first 200 chars): {raw[:200]}")
+    raw = response.text
+    logger.debug(f"Gemini raw response (first 200): {raw[:200]}")
 
-    # Strip markdown code fences if present
+    # Strip markdown fences if present (safety fallback)
     if "```json" in raw:
         raw = raw.split("```json")[1].split("```")[0].strip()
     elif "```" in raw:
@@ -118,22 +133,32 @@ async def generate_itinerary_llm(req: TripRequest) -> list:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
-        raise ValueError(f"LLM returned invalid JSON: {e}\nRaw: {raw[:300]}")
+        raise ValueError(f"Gemini returned invalid JSON: {e}\nRaw: {raw[:300]}")
 
+    # Handle {"itinerary": [...]} or direct [...]
     if isinstance(data, dict):
-        return list(data.values())[0]
-    return data
+        result = data.get("itinerary") or list(data.values())[0]
+    else:
+        result = data
+
+    logger.info(f"Gemini generated {len(result)} stops for {req.destination}")
+    return result
 
 
 # ─────────────────────────────────────────────────────────────
-# Enrich a single place via Perplexity sonar
+# Enrich a single place via Gemini Flash
 # ─────────────────────────────────────────────────────────────
 async def enrich_place_with_perplexity(place_name: str, city: str) -> dict:
-    client = get_client()
+    """
+    Use Gemini Flash to fetch real-time details for a specific place.
+    Function name kept for backward compatibility with existing routes.
+    """
+    import asyncio
+    model = get_model()
 
     prompt = f"""
-    Provide current factual information about "{place_name}" in {city}, India.
-    Return ONLY JSON with these exact fields:
+    Provide factual information about "{place_name}" in {city}, India.
+    Return ONLY this JSON, no extra text:
     {{
       "opening_hours": "9:00 AM - 6:00 PM",
       "closed_on": ["Tuesday"],
@@ -147,24 +172,17 @@ async def enrich_place_with_perplexity(place_name: str, city: str) -> dict:
     """
 
     try:
-        response = await client.chat.completions.create(
-            model="sonar",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            max_tokens=500
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: model.generate_content(prompt)
         )
-    except AuthenticationError:
-        raise ValueError(
-            "Perplexity API key is invalid (401). "
-            "Update PERPLEXITY_API_KEY in .env"
-        )
-
-    raw = response.choices[0].message.content
-    try:
+        raw = response.text
         if "```json" in raw:
             raw = raw.split("```json")[1].split("```")[0].strip()
         elif "```" in raw:
             raw = raw.split("```")[1].split("```")[0].strip()
         return json.loads(raw)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Place enrichment failed for '{place_name}': {e}")
         return {}

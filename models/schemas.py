@@ -4,7 +4,6 @@ from enum import Enum
 from datetime import datetime
 
 
-# ─────────────────────────────────────────
 class BudgetLevel(str, Enum):
     low = "low"
     medium = "medium"
@@ -37,7 +36,6 @@ class PlaceCategory(str, Enum):
     other = "other"
 
 
-# ─────────────────────────────────────────
 class TripRequest(BaseModel):
     destination: str = Field(..., example="Chennai")
     days: int = Field(..., ge=1, le=14, example=2)
@@ -53,7 +51,6 @@ class TripRequest(BaseModel):
     accessibility_needs: bool = Field(default=False)
 
 
-# ─────────────────────────────────────────
 class PlaceStop(BaseModel):
     day: int
     time: str
@@ -75,10 +72,6 @@ class PlaceStop(BaseModel):
     source: Optional[str] = None
 
 
-# ─────────────────────────────────────────
-# ItineraryMeta — model_config suppresses Pydantic warning
-# for field named 'model_used' (conflicts with 'model_' namespace)
-# ─────────────────────────────────────────
 class ItineraryMeta(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
@@ -88,7 +81,7 @@ class ItineraryMeta(BaseModel):
     budget: str
     mood: str
     generated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
-    model_used: str = "perplexity/sonar-pro"
+    model_used: str = "google/gemini-1.5-flash"
 
 class ItineraryResponse(BaseModel):
     success: bool
@@ -97,7 +90,6 @@ class ItineraryResponse(BaseModel):
     weather_warnings: Optional[List[str]] = None
 
 
-# ─────────────────────────────────────────
 class PlaceEnrichRequest(BaseModel):
     place_name: str = Field(..., example="Kapaleeshwarar Temple")
     city: str = Field(..., example="Chennai")
@@ -115,7 +107,6 @@ class PlaceEnrichResponse(BaseModel):
     nearby_food: Optional[str] = None
 
 
-# ─────────────────────────────────────────
 class UserRating(BaseModel):
     user_id: str
     place_id: str
@@ -124,7 +115,6 @@ class UserRating(BaseModel):
     review: Optional[str] = None
 
 
-# ─────────────────────────────────────────
 class PlaceResult(BaseModel):
     source: str
     place_id: Optional[str] = None
