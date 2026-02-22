@@ -1,3 +1,9 @@
+# ─────────────────────────────────────────
+# MUST be first — loads .env before any import reads os.getenv()
+# ─────────────────────────────────────────
+from dotenv import load_dotenv
+load_dotenv()  # ← loads .env BEFORE any other import
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
