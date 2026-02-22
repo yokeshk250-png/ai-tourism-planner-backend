@@ -2,17 +2,19 @@
 # MUST be first — loads .env before any import reads os.getenv()
 # ─────────────────────────────────────────
 from dotenv import load_dotenv
-load_dotenv()  # ← loads .env BEFORE any other import
+load_dotenv()
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from routes import itinerary, places, weather
 import logging
 import time
+import os
 
 # ─────────────────────────────────────────
-# Logging setup
+# Logging
 # ─────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -36,19 +38,33 @@ app = FastAPI(
 )
 
 # ─────────────────────────────────────────
-# CORS — allow React frontend
+# CORS — allow all origins in development
+# (Covers: file://, localhost:3000, localhost:5173, and deployed frontend)
 # ─────────────────────────────────────────
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "https://ai-tourism-planner.vercel.app"
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+APP_ENV = os.getenv("APP_ENV", "development")
+
+if APP_ENV == "development":
+    # Allow ALL origins in dev — covers file://, localhost, 127.0.0.1
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,   # Must be False when allow_origins=["*"]
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    # Production — restrict to known frontend URLs
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "https://ai-tourism-planner.vercel.app"
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # ─────────────────────────────────────────
 # Request logging middleware
@@ -73,14 +89,23 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 # ─────────────────────────────────────────
-# Register Routes
+# Register API Routes
 # ─────────────────────────────────────────
 app.include_router(itinerary.router, prefix="/api/itinerary", tags=["Itinerary"])
 app.include_router(places.router,    prefix="/api/places",    tags=["Places"])
 app.include_router(weather.router,   prefix="/api/weather",   tags=["Weather"])
 
 # ─────────────────────────────────────────
-# Root & Health endpoints
+# Serve test_frontend.html at /test
+# Access at: http://localhost:8000/test
+# ─────────────────────────────────────────
+@app.get("/test", tags=["Test"], include_in_schema=False)
+async def serve_test_frontend():
+    html_path = os.path.join(os.path.dirname(__file__), "test_frontend.html")
+    return FileResponse(html_path, media_type="text/html")
+
+# ─────────────────────────────────────────
+# Root & Health
 # ─────────────────────────────────────────
 @app.get("/", tags=["Health"])
 async def root():
@@ -88,14 +113,16 @@ async def root():
         "message": "AI Tourism Planner API 🗺️",
         "version": "2.0.0",
         "llm": "Perplexity sonar-pro",
-        "docs": "/docs"
+        "docs": "/docs",
+        "test_ui": "/test"
     }
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    return {"status": "healthy", "version": "2.0.0"}
+    return {"status": "healthy", "version": "2.0.0", "env": APP_ENV}
 
 @app.on_event("startup")
 async def on_startup():
-    logger.info("AI Tourism Planner API started 🚀")
+    logger.info(f"AI Tourism Planner API v2.0.0 started 🚀 [{APP_ENV}]")
     logger.info("LLM: Perplexity sonar-pro | POI: Foursquare + Geoapify + OpenTripMap")
+    logger.info("Test UI available at: http://localhost:8000/test")
