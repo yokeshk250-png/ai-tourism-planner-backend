@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException
 from models.schemas import (
     TripRequest, ItineraryResponse, ItineraryMeta,
@@ -22,11 +23,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _compute_day_dates(travel_dates: str, days: int) -> dict:
+    """
+    Parse 'YYYY-MM-DD' travel start date and return
+    {1: date, 2: date+1day, ...} so the scheduler can check
+    weekday-sensitive opening hours (e.g. 'Closed on Tuesday').
+    Returns empty dict on parse failure.
+    """
+    try:
+        start = datetime.strptime(travel_dates, "%Y-%m-%d").date()
+        return {i: start + timedelta(days=i - 1) for i in range(1, days + 1)}
+    except ValueError as e:
+        logger.warning(f"[gen] Could not parse travel_dates '{travel_dates}': {e}")
+        return {}
+
+
 async def _geocode_candidates(candidates: list, destination: str) -> list:
     """
-    Resolve lat/lon for each candidate that is missing coordinates.
-    Uses Geoapify geocoding. Failures are silently skipped — the scheduler
-    handles missing coords with a default travel estimate.
+    Resolve lat/lon for candidates that are missing coordinates.
+    Failures are silently skipped; the scheduler handles missing coords
+    with a default travel-time estimate.
     """
     enriched = []
     for raw in candidates:
@@ -49,25 +65,33 @@ async def _geocode_candidates(candidates: list, destination: str) -> list:
 @router.post("/generate", response_model=ItineraryResponse)
 async def generate_itinerary(req: TripRequest):
     try:
-        logger.info(f"[gen] {req.destination} | {req.days}d | {req.travel_type.value} | {req.mood.value}")
+        logger.info(
+            f"[gen] {req.destination} | {req.days}d | {req.travel_type.value} | "
+            f"{req.mood.value} | dates={req.travel_dates}"
+        )
 
         # ─ Stage 1: Groq → top must-visit place candidates (NO meals) ─
         raw_candidates = await generate_place_candidates_llm(req)
         logger.info(f"[gen] S1: {len(raw_candidates)} candidates from Groq")
 
-        # ─ Stage 2: Geocode candidates (get lat/lon) ─
+        # ─ Stage 2: Geocode candidates (resolve lat/lon) ─
         candidates = await _geocode_candidates(raw_candidates, req.destination)
         logger.info(f"[gen] S2: geocoded {len(candidates)} candidates")
 
-        # ─ Stage 3: Build slot template (days x 4 slots) ─
-        slots = build_day_slots(req.days)
-        logger.info(f"[gen] S3: {len(slots)} slots built ({req.days} days × 4)")
+        # ─ Stage 3: Build slot template + day dates ─
+        slots     = build_day_slots(req.days)
+        day_dates = _compute_day_dates(req.travel_dates, req.days) if req.travel_dates else {}
+        if day_dates:
+            logger.info(f"[gen] S3: day dates computed: {day_dates}")
+        else:
+            logger.info("[gen] S3: no travel_dates — weekday hour checks skipped")
 
-        # ─ Stage 4: Schedule candidates into slots ─
+        # ─ Stage 4: Schedule (opening-hours enforced) ─
         scheduled, unscheduled = schedule_candidates(
             candidates, slots,
             avoid_crowded=req.avoid_crowded,
-            accessibility_needs=req.accessibility_needs
+            accessibility_needs=req.accessibility_needs,
+            day_dates=day_dates or None,
         )
         logger.info(f"[gen] S4: {len(scheduled)} placed | {len(unscheduled)} unscheduled")
 
@@ -88,7 +112,6 @@ async def generate_itinerary(req: TripRequest):
                     still_unscheduled.append(failed)
                     continue
 
-                # Geocode + tag alternates
                 enriched_alts = await _geocode_candidates(alts, req.destination)
                 for a in enriched_alts:
                     a["is_alternate"] = True
@@ -96,12 +119,15 @@ async def generate_itinerary(req: TripRequest):
                 alt_sched, alt_unsched = schedule_candidates(
                     enriched_alts, slots,
                     avoid_crowded=req.avoid_crowded,
-                    accessibility_needs=req.accessibility_needs
+                    accessibility_needs=req.accessibility_needs,
+                    day_dates=day_dates or None,
                 )
                 scheduled.extend(alt_sched)
                 if alt_unsched:
                     still_unscheduled.extend(alt_unsched)
-                logger.info(f"[gen] S5 alt: {len(alt_sched)} placed for '{failed.get('place_name')}'")
+                logger.info(
+                    f"[gen] S5 alt: {len(alt_sched)} placed for '{failed.get('place_name')}'"
+                )
 
             unscheduled = still_unscheduled
 
@@ -141,9 +167,14 @@ async def generate_itinerary(req: TripRequest):
             unscheduled_out = []
             for u in unscheduled:
                 try:
-                    unscheduled_out.append(PlaceCandidate(**u) if isinstance(u, dict) else u)
+                    unscheduled_out.append(
+                        PlaceCandidate(**u) if isinstance(u, dict) else u
+                    )
                 except Exception:
                     pass
+
+        # Count unverified-hours stops for meta
+        unverified_count = sum(1 for s in stops_out if s.opening_hours_unverified)
 
         meta = ItineraryMeta(
             destination=req.destination,
@@ -152,10 +183,15 @@ async def generate_itinerary(req: TripRequest):
             budget=req.budget.value,
             mood=req.mood.value,
             total_places=len(stops_out),
-            unscheduled_count=len(unscheduled)
+            unscheduled_count=len(unscheduled),
+            hours_unverified_count=unverified_count,
         )
 
-        logger.info(f"[gen] Done: {len(stops_out)} stops, {len(unscheduled)} unscheduled")
+        logger.info(
+            f"[gen] Done: {len(stops_out)} stops, "
+            f"{len(unscheduled)} unscheduled, "
+            f"{unverified_count} hours-unverified"
+        )
         return ItineraryResponse(
             success=True,
             meta=meta,
@@ -192,7 +228,6 @@ async def save_user_itinerary(user_id: str, itinerary: dict):
         doc_id = await save_itinerary(user_id, itinerary)
         return {"success": True, "itinerary_id": doc_id}
     except Exception as e:
-        logger.error(f"[save] {type(e).__name__}: {e}")
         raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
 
 
