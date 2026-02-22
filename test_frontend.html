@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Tourism Planner — API Tester</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, #1e40af, #7c3aed);
+      padding: 24px 32px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    header h1 { font-size: 1.6rem; font-weight: 700; color: #fff; }
+    header span { font-size: 1.8rem; }
+    .badge {
+      background: #22d3ee22;
+      border: 1px solid #22d3ee55;
+      color: #22d3ee;
+      font-size: 0.75rem;
+      padding: 3px 10px;
+      border-radius: 99px;
+      margin-left: 8px;
+    }
+
+    .container { max-width: 1100px; margin: 0 auto; padding: 32px 20px; }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      padding: 9px 20px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: #1e40af;
+      border-color: #3b82f6;
+      color: #fff;
+    }
+    .tab-btn:hover:not(.active) { border-color: #64748b; color: #e2e8f0; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Card */
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .card h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #f1f5f9;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Form */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+
+    .form-group label {
+      display: block;
+      font-size: 0.8rem;
+      color: #94a3b8;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: #e2e8f0;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border 0.2s;
+    }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus { border-color: #3b82f6; }
+    .form-group.full { grid-column: 1 / -1; }
+
+    /* Checkbox group */
+    .checkbox-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .checkbox-group label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      padding: 6px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      color: #cbd5e1;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .checkbox-group input[type=checkbox] { accent-color: #3b82f6; }
+    .checkbox-group input[type=checkbox]:checked + span { color: #60a5fa; }
+
+    /* Buttons */
+    .btn {
+      padding: 11px 24px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 600;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-primary:disabled { background: #1e40af; opacity: 0.6; cursor: not-allowed; }
+    .btn-secondary { background: #334155; color: #e2e8f0; }
+    .btn-secondary:hover { background: #475569; }
+
+    /* Status */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 0.85rem;
+    }
+    .status-bar.success { background: #14532d33; border: 1px solid #16a34a55; color: #4ade80; }
+    .status-bar.error   { background: #7f1d1d33; border: 1px solid #dc262655; color: #f87171; }
+    .status-bar.loading { background: #1e3a5f33; border: 1px solid #3b82f655; color: #60a5fa; }
+    .status-bar.hidden  { display: none; }
+
+    /* Spinner */
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid #60a5fa44;
+      border-top-color: #60a5fa;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Response box */
+    .response-box {
+      background: #020617;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 18px;
+      overflow-x: auto;
+    }
+    .response-box pre {
+      font-family: 'Consolas', monospace;
+      font-size: 0.82rem;
+      color: #a5f3fc;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.6;
+    }
+
+    /* Itinerary cards */
+    .itinerary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+      margin-top: 16px;
+    }
+    .stop-card {
+      background: #0f172a;
+      border: 1px solid #1e40af55;
+      border-left: 3px solid #3b82f6;
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .stop-card .stop-time {
+      font-size: 0.75rem;
+      color: #60a5fa;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .stop-card .stop-name {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin: 4px 0;
+    }
+    .stop-card .stop-meta {
+      font-size: 0.8rem;
+      color: #64748b;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 6px 0;
+    }
+    .stop-card .stop-tip {
+      font-size: 0.8rem;
+      color: #a78bfa;
+      font-style: italic;
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid #1e293b;
+    }
+    .day-badge {
+      display: inline-block;
+      background: #1e40af;
+      color: #bfdbfe;
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 99px;
+      margin-bottom: 4px;
+    }
+
+    /* Warning banner */
+    .warning-banner {
+      background: #78350f22;
+      border: 1px solid #d97706;
+      color: #fbbf24;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      margin-bottom: 12px;
+    }
+
+    /* Base URL bar */
+    .url-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 24px;
+    }
+    .url-bar label { font-size: 0.8rem; color: #94a3b8; white-space: nowrap; }
+    .url-bar input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #60a5fa;
+      font-size: 0.95rem;
+      outline: none;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span>🗺️</span>
+  <h1>AI Tourism Planner <span class="badge">API Tester</span></h1>
+</header>
+
+<div class="container">
+
+  <!-- Base URL -->
+  <div class="url-bar">
+    <div class="dot"></div>
+    <label>API Base URL:</label>
+    <input type="text" id="baseUrl" value="http://localhost:8000" />
+    <button class="btn btn-secondary" style="padding:6px 14px;font-size:0.82rem" onclick="pingHealth()">Ping</button>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('itinerary', this)">🗓️ Generate Itinerary</button>
+    <button class="tab-btn" onclick="switchTab('places', this)">📍 Search Places</button>
+    <button class="tab-btn" onclick="switchTab('enrich', this)">✨ Enrich Place</button>
+    <button class="tab-btn" onclick="switchTab('weather', this)">⛅ Weather</button>
+    <button class="tab-btn" onclick="switchTab('raw', this)">🧪 Raw API</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB 1: Generate Itinerary                 -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="tab-panel active" id="tab-itinerary">
+    <div class="card">
+      <h2>🤖 Generate AI Itinerary <small style="font-size:0.75rem;color:#64748b;font-weight:400;margin-left:4px">POST /api/itinerary/generate</small></h2>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Destination</label>
+          <input type="text" id="g-destination" value="Chennai" placeholder="e.g. Chennai" />
+        </div>
+        <div class="form-group">
+          <label>Days</label>
+          <input type="number" id="g-days" value="2" min="1" max="14" />
+        </div>
+        <div class="form-group">
+          <label>Budget</label>
+          <select id="g-budget">
+            <option value="low">Low 💰</option>
+            <option value="medium" selected>Medium 💳</option>
+            <option value="high">High 💸</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Travel Type</label>
+          <select id="g-travel_type">
+            <option value="solo">Solo</option>
+            <option value="couple">Couple</option>
+            <option value="family" selected>Family</option>
+            <option value="group">Group</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Mood / Theme</label>
+          <select id="g-mood">
+            <option value="cultural" selected>Cultural</option>
+            <option value="relaxed">Relaxed</option>
+            <option value="adventure">Adventure</option>
+            <option value="spiritual">Spiritual</option>
+            <option value="romantic">Romantic</option>
+            <option value="foodie">Foodie</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Travel Date</label>
+          <input type="date" id="g-travel_dates" />
+        </div>
+        <div class="form-group full">
+          <label>Interests</label>
+          <div class="checkbox-group">
+            <label><input type="checkbox" value="temples" checked /><span>Temples</span></label>
+            <label><input type="checkbox" value="beach" checked /><span>Beach</span></label>
+            <label><input type="checkbox" value="history" checked /><span>History</span></label>
+            <label><input type="checkbox" value="museum" /><span>Museum</span></label>
+            <label><input type="checkbox" value="nature" /><span>Nature</span></label>
+            <label><input type="checkbox" value="food" /><span>Food</span></label>
+            <label><input type="checkbox" value="shopping" /><span>Shopping</span></label>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="g-btn" onclick="generateItinerary()">
+        ⚡ Generate Itinerary
+      </button>
+    </div>
+
+    <div class="status-bar hidden" id="g-status"></div>
+
+    <!-- Itinerary cards output -->
+    <div id="g-result-cards"></div>
+
+    <!-- Raw JSON toggle -->
+    <div id="g-result-raw" style="display:none">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <button class="btn btn-secondary" style="padding:6px 14px;font-size:0.82rem" onclick="toggleRaw('g')">Hide JSON</button>
+      </div>
+      <div class="response-box"><pre id="g-json"></pre></div>
+    </div>
+    <div id="g-show-raw" style="display:none;margin-top:8px">
+      <button class="btn btn-secondary" style="padding:6px 14px;font-size:0.82rem" onclick="toggleRaw('g')">Show Raw JSON</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB 2: Search Places                      -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="tab-panel" id="tab-places">
+    <div class="card">
+      <h2>📍 Search Tourist Places <small style="font-size:0.75rem;color:#64748b;font-weight:400;margin-left:4px">GET /api/places/search</small></h2>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Destination</label>
+          <input type="text" id="p-destination" value="Chennai" />
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select id="p-category">
+            <option value="tourist_attraction">Tourist Attraction</option>
+            <option value="temple">Temple</option>
+            <option value="beach">Beach</option>
+            <option value="museum">Museum</option>
+            <option value="park">Park</option>
+            <option value="restaurant">Restaurant</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Limit</label>
+          <input type="number" id="p-limit" value="10" min="1" max="30" />
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="searchPlaces()">🔍 Search Places</button>
+    </div>
+    <div class="status-bar hidden" id="p-status"></div>
+    <div class="response-box" id="p-result" style="display:none"><pre id="p-json"></pre></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB 3: Enrich Place                       -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="tab-panel" id="tab-enrich">
+    <div class="card">
+      <h2>✨ Enrich Place via Perplexity <small style="font-size:0.75rem;color:#64748b;font-weight:400;margin-left:4px">POST /api/places/enrich</small></h2>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Place Name</label>
+          <input type="text" id="e-place" value="Kapaleeshwarar Temple" />
+        </div>
+        <div class="form-group">
+          <label>City</label>
+          <input type="text" id="e-city" value="Chennai" />
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="enrichPlace()">✨ Get Real-Time Details</button>
+    </div>
+    <div class="status-bar hidden" id="e-status"></div>
+    <div id="e-result-cards"></div>
+    <div class="response-box" id="e-result" style="display:none"><pre id="e-json"></pre></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB 4: Weather                            -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="tab-panel" id="tab-weather">
+    <div class="card">
+      <h2>⛅ Weather Forecast <small style="font-size:0.75rem;color:#64748b;font-weight:400;margin-left:4px">GET /api/weather/forecast</small></h2>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>City</label>
+          <input type="text" id="w-city" value="Chennai" />
+        </div>
+        <div class="form-group">
+          <label>Days</label>
+          <input type="number" id="w-days" value="3" min="1" max="7" />
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="getWeather()">⛅ Get Forecast</button>
+    </div>
+    <div class="status-bar hidden" id="w-status"></div>
+    <div class="response-box" id="w-result" style="display:none"><pre id="w-json"></pre></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- TAB 5: Raw API                            -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="tab-panel" id="tab-raw">
+    <div class="card">
+      <h2>🧪 Raw API Request</h2>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Method</label>
+          <select id="r-method">
+            <option>GET</option>
+            <option selected>POST</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Endpoint</label>
+          <input type="text" id="r-endpoint" value="/api/itinerary/generate" />
+        </div>
+        <div class="form-group full">
+          <label>Request Body (JSON)</label>
+          <textarea id="r-body" rows="8" style="resize:vertical;font-family:monospace;font-size:0.85rem">{
+  "destination": "Chennai",
+  "days": 2,
+  "budget": "medium",
+  "travel_type": "family",
+  "mood": "cultural",
+  "interests": ["temples", "beach", "history"]
+}</textarea>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="rawRequest()">🚀 Send Request</button>
+    </div>
+    <div class="status-bar hidden" id="r-status"></div>
+    <div class="response-box" id="r-result" style="display:none"><pre id="r-json"></pre></div>
+  </div>
+
+</div>
+
+<script>
+  // ─────────────────────────────────────────────────────
+  // Helpers
+  // ─────────────────────────────────────────────────────
+  const base = () => document.getElementById('baseUrl').value.replace(/\/$/, '');
+
+  function switchTab(name, el) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    el.classList.add('active');
+  }
+
+  function setStatus(id, type, msg) {
+    const el = document.getElementById(id + '-status');
+    el.className = 'status-bar ' + type;
+    el.innerHTML = type === 'loading'
+      ? `<div class="spinner"></div> ${msg}`
+      : (type === 'success' ? '✅ ' : '❌ ') + msg;
+  }
+
+  function showJSON(id, data) {
+    document.getElementById(id + '-json').textContent = JSON.stringify(data, null, 2);
+    const box = document.getElementById(id + '-result');
+    if (box) { box.style.display = 'block'; }
+  }
+
+  function toggleRaw(prefix) {
+    const raw = document.getElementById(prefix + '-result-raw');
+    const btn = document.getElementById(prefix + '-show-raw');
+    if (raw.style.display === 'none') {
+      raw.style.display = 'block';
+      btn.style.display = 'none';
+    } else {
+      raw.style.display = 'none';
+      btn.style.display = 'block';
+    }
+  }
+
+  async function apiFetch(method, path, body = null) {
+    const opts = {
+      method,
+      headers: { 'Content-Type': 'application/json' }
+    };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(base() + path, opts);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+    return data;
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Ping Health
+  // ─────────────────────────────────────────────────────
+  async function pingHealth() {
+    try {
+      const data = await apiFetch('GET', '/health');
+      alert('✅ API is healthy!\n' + JSON.stringify(data, null, 2));
+    } catch (e) {
+      alert('❌ Cannot connect to API.\n' + e.message);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Generate Itinerary
+  // ─────────────────────────────────────────────────────
+  async function generateItinerary() {
+    const btn = document.getElementById('g-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Generating...';
+    setStatus('g', 'loading', 'Calling Perplexity sonar-pro...');
+    document.getElementById('g-result-cards').innerHTML = '';
+    document.getElementById('g-result-raw').style.display = 'none';
+    document.getElementById('g-show-raw').style.display = 'none';
+
+    const interests = [...document.querySelectorAll('.checkbox-group input:checked')].map(i => i.value);
+    const payload = {
+      destination: document.getElementById('g-destination').value,
+      days: parseInt(document.getElementById('g-days').value),
+      budget: document.getElementById('g-budget').value,
+      travel_type: document.getElementById('g-travel_type').value,
+      mood: document.getElementById('g-mood').value,
+      interests,
+      travel_dates: document.getElementById('g-travel_dates').value || null
+    };
+
+    try {
+      const data = await apiFetch('POST', '/api/itinerary/generate', payload);
+      setStatus('g', 'success', `Itinerary generated! ${data.itinerary.length} stops across ${payload.days} day(s).`);
+
+      // Weather warnings
+      const container = document.getElementById('g-result-cards');
+      if (data.weather_warnings && data.weather_warnings.length) {
+        data.weather_warnings.forEach(w => {
+          container.innerHTML += `<div class="warning-banner">⚠️ ${w}</div>`;
+        });
+      }
+
+      // Group by day
+      const byDay = {};
+      data.itinerary.forEach(s => {
+        if (!byDay[s.day]) byDay[s.day] = [];
+        byDay[s.day].push(s);
+      });
+
+      Object.entries(byDay).forEach(([day, stops]) => {
+        container.innerHTML += `<h3 style="color:#60a5fa;margin:18px 0 10px;font-size:1rem">🗓️ Day ${day}</h3>`;
+        container.innerHTML += `<div class="itinerary-grid">${stops.map(s => `
+          <div class="stop-card">
+            <div class="day-badge">Day ${s.day}</div>
+            <div class="stop-time">${s.time || ''} ${ s.category ? '• ' + s.category : ''}</div>
+            <div class="stop-name">${s.place_name}</div>
+            <div class="stop-meta">
+              ${ s.duration_hrs ? `⏱ ${s.duration_hrs}hr` : ''}
+              ${ s.entry_fee !== undefined ? `🎫 ₹${s.entry_fee}` : ''}
+              ${ s.rating ? `⭐ ${s.rating}` : ''}
+            </div>
+            ${ s.tip ? `<div class="stop-tip">💡 ${s.tip}</div>` : ''}
+            ${ s.warning ? `<div style="color:#f87171;font-size:0.78rem;margin-top:6px">⚠️ ${s.warning}</div>` : ''}
+          </div>
+        `).join('')}</div>`;
+      });
+
+      // Store JSON for toggle
+      document.getElementById('g-json').textContent = JSON.stringify(data, null, 2);
+      document.getElementById('g-show-raw').style.display = 'block';
+
+    } catch (e) {
+      setStatus('g', 'error', e.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '⚡ Generate Itinerary';
+    }
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Search Places
+  // ─────────────────────────────────────────────────────
+  async function searchPlaces() {
+    setStatus('p', 'loading', 'Searching places...');
+    const dest = document.getElementById('p-destination').value;
+    const cat  = document.getElementById('p-category').value;
+    const lim  = document.getElementById('p-limit').value;
+    try {
+      const data = await apiFetch('GET', `/api/places/search?destination=${dest}&category=${cat}&limit=${lim}`);
+      setStatus('p', 'success', `Found ${data.count} places in ${dest}.`);
+      showJSON('p', data);
+    } catch (e) {
+      setStatus('p', 'error', e.message);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Enrich Place
+  // ─────────────────────────────────────────────────────
+  async function enrichPlace() {
+    setStatus('e', 'loading', 'Fetching real-time info from Perplexity...');
+    document.getElementById('e-result-cards').innerHTML = '';
+    document.getElementById('e-result').style.display = 'none';
+
+    const payload = {
+      place_name: document.getElementById('e-place').value,
+      city: document.getElementById('e-city').value
+    };
+    try {
+      const data = await apiFetch('POST', '/api/places/enrich', payload);
+      setStatus('e', 'success', `Got real-time details for ${payload.place_name}.`);
+
+      const c = document.getElementById('e-result-cards');
+      const rows = [
+        ['🕒 Opening Hours', data.opening_hours],
+        ['🚫 Closed On', data.closed_on?.join(', ')],
+        ['🎫 Entry Fee (Indian)', data.entry_fee_indian !== undefined ? `₹${data.entry_fee_indian}` : null],
+        ['🎫 Entry Fee (Foreign)', data.entry_fee_foreign !== undefined ? `₹${data.entry_fee_foreign}` : null],
+        ['☀️ Best Time', data.best_time_to_visit],
+        ['⏱ Avg Duration', data.avg_visit_duration_hrs ? `${data.avg_visit_duration_hrs} hrs` : null],
+        ['💡 Local Tip', data.local_tip],
+        ['🍴 Nearby Food', data.nearby_food]
+      ].filter(r => r[1]);
+
+      c.innerHTML = `<div class="card" style="margin-top:16px">
+        <h2 style="margin-bottom:14px">${payload.place_name} — ${payload.city}</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          ${rows.map(([k,v]) => `
+            <div style="background:#0f172a;padding:10px 14px;border-radius:8px;border:1px solid #334155">
+              <div style="font-size:0.75rem;color:#64748b;margin-bottom:4px">${k}</div>
+              <div style="font-size:0.9rem;color:#e2e8f0">${v}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+
+      showJSON('e', data);
+    } catch (e) {
+      setStatus('e', 'error', e.message);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Weather
+  // ─────────────────────────────────────────────────────
+  async function getWeather() {
+    setStatus('w', 'loading', 'Fetching weather forecast...');
+    const city = document.getElementById('w-city').value;
+    const days = document.getElementById('w-days').value;
+    try {
+      const data = await apiFetch('GET', `/api/weather/forecast?city=${city}&days=${days}`);
+      setStatus('w', 'success', `Weather fetched for ${city}. ${data.has_warnings ? '⚠️ Warnings found!' : '✅ No weather warnings.'}`);
+      showJSON('w', data);
+    } catch (e) {
+      setStatus('w', 'error', e.message);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Raw API
+  // ─────────────────────────────────────────────────────
+  async function rawRequest() {
+    const method   = document.getElementById('r-method').value;
+    const endpoint = document.getElementById('r-endpoint').value;
+    const bodyText = document.getElementById('r-body').value;
+    setStatus('r', 'loading', `${method} ${endpoint}`);
+
+    let body = null;
+    try { if (bodyText.trim()) body = JSON.parse(bodyText); }
+    catch { setStatus('r', 'error', 'Invalid JSON body'); return; }
+
+    try {
+      const data = await apiFetch(method, endpoint, body);
+      setStatus('r', 'success', `${method} ${endpoint} → 200 OK`);
+      showJSON('r', data);
+    } catch (e) {
+      setStatus('r', 'error', e.message);
+    }
+  }
+</script>
+
+</body>
+</html>
