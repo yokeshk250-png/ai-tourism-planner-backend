@@ -40,14 +40,6 @@ SLOT_TEMPLATE = [
     },
 ]
 
-# Quick lookup: slot_name → (start_mins, end_mins)
-SLOT_WINDOWS: Dict[str, Tuple[int, int]] = {
-    t["slot_name"]: (_hm := lambda s: int(s.split(":")[0]) * 60 + int(s.split(":")[1]),
-                     _hm(t["start"]), _hm(t["end"]))[1:]
-    for t in SLOT_TEMPLATE
-}
-# Build properly after helpers are defined (see _SLOT_WINDOWS_INIT below)
-
 TRAVEL_SPEED_KMPH   = 20
 TRAVEL_BUFFER_MINS  = 10
 DEFAULT_TRAVEL_MINS = 15
@@ -55,8 +47,11 @@ DEFAULT_TRAVEL_MINS = 15
 
 # ─────────────────────────────────────────────────────────────
 # Opening hours parser
-# Handles: 24/7, "9:00 AM - 6:00 PM", "09:00-18:00",
-#          "Tue-Sun 9 AM to 6 PM", OSM "Mo-Fr 08:00-17:00; Sa off"
+# Handles:
+#   • 24/7, "9:00 AM - 6:00 PM", "09:00-18:00"
+#   • Multi-session: "5:30 AM - 12:00 PM, 4:00 PM - 8:00 PM"
+#   • Day-prefixed: "Tue-Sun 9 AM to 6 PM"
+#   • OSM: "Mo-Fr 08:00-17:00; Sa off"
 # ─────────────────────────────────────────────────────────────
 
 _OSM_ABBR   = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
@@ -71,6 +66,9 @@ _DAY_NAME_TO_IDX = {
     "saturday": 5, "sat": 5,
     "sunday": 6, "sun": 6,
 }
+
+# Regex for a single time token: "9:00 AM", "09:00", "6 PM"
+_TIME_PAT = r"\d{1,2}(?::\d{2})?\s*(?:am|pm)|\d{2}:\d{2}"
 
 
 def _hm_to_mins(hm: str) -> int:
@@ -106,26 +104,52 @@ def _parse_time_str(s: str) -> Optional[int]:
     return None
 
 
-def _parse_daily_range(opening_hours: str) -> Optional[Tuple[int, int]]:
+def _parse_sessions(opening_hours: str) -> List[Tuple[int, int]]:
     """
-    Extract first and last time token from the string.
-    Handles: '9:00 AM - 6:00 PM', '09:00-18:00',
-             'Tue-Sun 9:00 AM to 6:00 PM', 'Everyday 6 AM - 9 PM'
+    Parse opening_hours into a list of (open_mins, close_mins) sessions.
+
+    Handles both single-session and multi-session (comma-separated) formats:
+      • "9:00 AM - 6:00 PM"                  → [(540, 1080)]
+      • "5:30 AM - 12:00 PM, 4:00 PM - 8:00 PM" → [(330, 720), (960, 1200)]
+      • "09:00-18:00"                         → [(540, 1080)]
+
+    Returns [] if nothing parseable is found.
     """
     s = opening_hours.strip()
     if re.search(r"(24/7|open\s*24|always\s*open)", s, re.IGNORECASE):
-        return (0, 24 * 60)
-    time_pat = r"\d{1,2}(?::\d{2})?\s*(?:am|pm)|\d{2}:\d{2}"
-    tokens   = re.findall(time_pat, s, re.IGNORECASE)
-    if len(tokens) < 2:
+        return [(0, 24 * 60)]
+
+    sessions: List[Tuple[int, int]] = []
+
+    # Split on comma or semicolon, then try to extract a pair of time tokens
+    # from each chunk.  This handles "X AM - Y PM, A PM - B PM" correctly.
+    chunks = re.split(r",|;", s)
+    for chunk in chunks:
+        chunk = chunk.strip()
+        tokens = re.findall(_TIME_PAT, chunk, re.IGNORECASE)
+        if len(tokens) < 2:
+            continue
+        t1 = _parse_time_str(tokens[0].strip())
+        t2 = _parse_time_str(tokens[-1].strip())
+        if t1 is None or t2 is None:
+            continue
+        if t2 <= t1:          # overnight wrap (e.g. 10 PM – 2 AM)
+            t2 += 24 * 60
+        sessions.append((t1, t2))
+
+    return sessions
+
+
+def _parse_daily_range(opening_hours: str) -> Optional[Tuple[int, int]]:
+    """
+    Legacy single-range helper kept for validate_candidate_slots / _first_valid_slot.
+    Returns the UNION envelope (earliest open, latest close) across all sessions.
+    For multi-session hours callers should use _parse_sessions() directly.
+    """
+    sessions = _parse_sessions(opening_hours)
+    if not sessions:
         return None
-    t1 = _parse_time_str(tokens[0].strip())
-    t2 = _parse_time_str(tokens[-1].strip())
-    if t1 is None or t2 is None:
-        return None
-    if t2 < t1:
-        t2 += 24 * 60
-    return (t1, t2)
+    return (min(o for o, _ in sessions), max(c for _, c in sessions))
 
 
 def _expand_osm_days(token: str) -> List[int]:
@@ -194,19 +218,22 @@ def is_open_for_slot(
     slot_end: str,
     duration_mins: int,
     slot_date: Optional[date] = None,
-) -> Tuple[Optional[bool], str]:
+) -> Tuple[Optional[bool], str, Optional[int]]:
     """
     Check whether a place can be visited during a slot.
 
-    Valid when:
-        visit_start = max(slot_start, place_open)
-        visit_end   = visit_start + duration_mins
-        visit_end  <= min(slot_end,  place_close)
+    Returns a 3-tuple:
+        (open_ok, reason, clamped_start_mins)
 
-    Returns:
-        (True,  "")      — confirmed open and fits
-        (False, reason)  — confirmed closed / won't fit  → skip slot
-        (None,  reason)  — unknown / unparseable          → schedule with warning
+    open_ok:
+        True   — confirmed open and duration fits
+        False  — confirmed closed / won't fit  → skip slot
+        None   — unknown / unparseable          → schedule with warning
+
+    clamped_start_mins:
+        The actual minute-of-day when the visit can BEGIN, accounting for
+        when the place opens (max(slot_start, place_open)).  None when
+        open_ok is not True.
     """
     s_mins = _hm_to_mins(slot_start)
     e_mins = _hm_to_mins(slot_end)
@@ -217,57 +244,61 @@ def is_open_for_slot(
         for day_str in closed_on:
             idx = _DAY_NAME_TO_IDX.get(day_str.strip().lower())
             if idx is not None and idx == wd:
-                return (False, f"Closed on {day_str}")
+                return (False, f"Closed on {day_str}", None)
 
     if not opening_hours:
-        return (None, "No opening hours data")
+        return (None, "No opening hours data", None)
 
     low = opening_hours.lower().replace(" ", "")
     if low in ("24/7", "open24hrs", "open24hours", "open24h", "alwaysopen", "open24"):
-        return (True, "")
+        return (True, "", s_mins)
 
-    # 2. Simple daily range
-    daily = _parse_daily_range(opening_hours)
-    if daily:
-        o, c = daily
-        visit_start = max(s_mins, o)
-        visit_end   = visit_start + duration_mins
-        if visit_end <= min(e_mins, c):
-            return (True, "")
+    # 2. Multi-session daily schedule
+    sessions = _parse_sessions(opening_hours)
+    if sessions:
+        for o, c in sessions:
+            visit_start = max(s_mins, o)
+            visit_end   = visit_start + duration_mins
+            if visit_end <= min(e_mins, c):
+                return (True, "", visit_start)
+        # Build a human-readable description of all sessions
+        sess_str = ", ".join(
+            f"{_mins_to_time(o)}-{_mins_to_time(c % (24*60))}" for o, c in sessions
+        )
         return (
             False,
-            f"Hours {_mins_to_time(o)}-{_mins_to_time(c % (24*60))}: "
-            f"slot {slot_start}-{slot_end}, need {duration_mins}min"
+            f"Hours {sess_str}: slot {slot_start}-{slot_end}, need {duration_mins}min",
+            None,
         )
 
     # 3. OSM weekday schedule
     osm = _parse_osm_schedule(opening_hours)
     if osm is not None:
         if slot_date is None:
-            return (None, "Travel date unknown — weekday hours unverifiable")
+            return (None, "Travel date unknown — weekday hours unverifiable", None)
         wd = slot_date.weekday()
         intervals = osm.get(wd, [])
         if not intervals:
-            return (False, f"Closed on {slot_date.strftime('%A')}")
+            return (False, f"Closed on {slot_date.strftime('%A')}", None)
         for o, c in intervals:
             visit_start = max(s_mins, o)
             visit_end   = visit_start + duration_mins
             if visit_end <= min(e_mins, c):
-                return (True, "")
+                return (True, "", visit_start)
         return (
             False,
             f"No interval on {slot_date.strftime('%A')} fits "
-            f"{slot_start}-{slot_end} ({duration_mins}min)"
+            f"{slot_start}-{slot_end} ({duration_mins}min)",
+            None,
         )
 
-    return (None, f"Unparseable hours: {opening_hours!r:.60}")
+    return (None, f"Unparseable hours: {opening_hours!r:.60}", None)
 
 
 # ─────────────────────────────────────────────────────────────
 # Pre-schedule: validate & auto-correct best_slot vs opening hours
 # ─────────────────────────────────────────────────────────────
 
-# Slot definitions for fast window lookup (name → (open_mins, close_mins))
 _SLOT_WINDOWS = {
     "morning":   (_hm_to_mins("09:00"), _hm_to_mins("12:00")),
     "afternoon": (_hm_to_mins("13:00"), _hm_to_mins("16:00")),
@@ -278,37 +309,34 @@ _SLOT_WINDOWS = {
 
 def _first_valid_slot(opening_hours: str, duration_mins: int) -> Optional[str]:
     """
-    Given an opening_hours string and required duration, return the name of
-    the FIRST slot window that the place is actually open for long enough.
-    Returns None if no slot fits (place cannot be scheduled at all).
+    Return the name of the first slot window where the place is open and
+    the duration fits.  Uses multi-session-aware _parse_sessions().
     """
-    daily = _parse_daily_range(opening_hours)
-    if not daily:
+    sessions = _parse_sessions(opening_hours)
+    if not sessions:
         return None
-    o, c = daily
 
     slot_order = ["morning", "afternoon", "evening", "night"]
     for slot_name in slot_order:
         s_mins, e_mins = _SLOT_WINDOWS[slot_name]
-        visit_start = max(s_mins, o)
-        visit_end   = visit_start + duration_mins
-        if visit_end <= min(e_mins, c):
-            return slot_name
+        for o, c in sessions:
+            visit_start = max(s_mins, o)
+            visit_end   = visit_start + duration_mins
+            if visit_end <= min(e_mins, c):
+                return slot_name
     return None
 
 
 def validate_candidate_slots(candidates: list) -> list:
     """
-    Pre-scheduling pass: for every candidate, verify that its best_slot
-    actually overlaps with the place's opening_hours.
+    Pre-scheduling pass: verify that each candidate's best_slot aligns
+    with its actual opening_hours (multi-session aware).
 
-    Three outcomes:
-      1. opening_hours missing/unparseable → keep best_slot as-is, flag warning.
-      2. best_slot is valid (place open + fits) → no change.
-      3. best_slot is WRONG (place closed in that slot) → auto-correct to the
-         first slot where the place IS open. If no slot fits at all, mark
-         candidate as `hours_conflict = True` (scheduler will still try; the
-         per-slot is_open_for_slot() check is the final arbiter).
+    Outcomes:
+      1. No / unparseable hours → keep best_slot as-is.
+      2. best_slot valid → no change.
+      3. best_slot wrong → auto-correct to first truly-open slot.
+      4. No slot fits at all → set hours_conflict=True.
     """
     for cand in candidates:
         name     = cand.get("place_name", "?")
@@ -317,42 +345,37 @@ def validate_candidate_slots(candidates: list) -> list:
         dur_mins = int(float(cand.get("duration_hrs", 1.0)) * 60)
 
         if not oh_str.strip():
-            logger.debug(f"[validate] '{name}': no opening_hours — keeping best_slot='{pref}'")
             continue
 
         low = oh_str.lower().replace(" ", "")
         if low in ("24/7", "open24hrs", "open24hours", "open24h", "alwaysopen", "open24"):
-            logger.debug(f"[validate] '{name}': open 24/7 — any slot valid")
             continue
 
-        daily = _parse_daily_range(oh_str)
-        if not daily:
-            logger.debug(f"[validate] '{name}': unparseable hours '{oh_str[:40]}' — keeping best_slot")
+        sessions = _parse_sessions(oh_str)
+        if not sessions:
+            logger.debug(f"[validate] '{name}': unparseable hours — keeping best_slot")
             continue
 
-        o, c = daily
         s_mins, e_mins = _SLOT_WINDOWS.get(pref, _SLOT_WINDOWS["morning"])
-        visit_start = max(s_mins, o)
-        visit_end   = visit_start + dur_mins
+        slot_ok = any(
+            (max(s_mins, o) + dur_mins) <= min(e_mins, c)
+            for o, c in sessions
+        )
 
-        if visit_end <= min(e_mins, c):
-            # best_slot is fine
-            logger.debug(f"[validate] '{name}': best_slot='{pref}' ✔️ (open {_mins_to_time(o)}-{_mins_to_time(c % 1440)})")
+        if slot_ok:
+            logger.debug(f"[validate] '{name}': best_slot='{pref}' ✔️")
             continue
 
-        # best_slot is wrong — find a better one
         corrected = _first_valid_slot(oh_str, dur_mins)
         if corrected and corrected != pref:
+            sess_str = ", ".join(f"{_mins_to_time(o)}-{_mins_to_time(c%1440)}" for o, c in sessions)
             logger.info(
                 f"[validate] '{name}': best_slot '{pref}' ✖ "
-                f"(opens {_mins_to_time(o)}, closes {_mins_to_time(c % 1440)}) → corrected to '{corrected}'"
+                f"(hours: {sess_str}) → corrected to '{corrected}'"
             )
             cand["best_slot"] = corrected
         elif not corrected:
-            logger.warning(
-                f"[validate] '{name}': NO slot fits "
-                f"(opens {_mins_to_time(o)}, closes {_mins_to_time(c % 1440)}, dur={dur_mins}min) — flagged"
-            )
+            logger.warning(f"[validate] '{name}': NO slot fits — flagged hours_conflict")
             cand["hours_conflict"] = True
 
     return candidates
@@ -410,12 +433,28 @@ def _fits_in_slot(candidate: dict, slot: dict, travel_mins: int) -> bool:
     return needed <= slot["remaining_mins"]
 
 
-def _compute_stop_times(slot: dict, travel_mins: int, duration_hrs: float) -> Tuple[str, str]:
-    base_mins  = _hm_to_mins(slot["start_time"])
-    used_mins  = slot["available_mins"] - slot["remaining_mins"]
-    actual_t   = _actual_travel(slot, travel_mins)
-    start_mins = base_mins + used_mins + actual_t
-    end_mins   = start_mins + int(duration_hrs * 60)
+def _compute_stop_times(
+    slot: dict,
+    travel_mins: int,
+    duration_hrs: float,
+    clamped_start: Optional[int] = None,
+) -> Tuple[str, str]:
+    """
+    Compute the actual start/end times for a stop.
+
+    clamped_start: minute-of-day returned by is_open_for_slot() —
+      the point where the visit can actually begin (max(slot_start, place_open)).
+      When provided this overrides the raw slot-position calculation so the
+      displayed start_time is never earlier than when the place opens.
+    """
+    actual_t = _actual_travel(slot, travel_mins)
+    if clamped_start is not None:
+        start_mins = clamped_start + actual_t
+    else:
+        base_mins  = _hm_to_mins(slot["start_time"])
+        used_mins  = slot["available_mins"] - slot["remaining_mins"]
+        start_mins = base_mins + used_mins + actual_t
+    end_mins = start_mins + int(duration_hrs * 60)
     return _mins_to_time(start_mins), _mins_to_time(end_mins)
 
 
@@ -430,20 +469,15 @@ def schedule_candidates(
     day_dates: Optional[Dict[int, date]] = None,
 ) -> Tuple[list, list]:
     """
-    Greedy scheduler with pre-schedule opening hours validation.
+    Greedy scheduler.
 
-    Step 0 (NEW): validate_candidate_slots() runs before scheduling.
-      • Checks every candidate's best_slot against its opening_hours.
-      • Auto-corrects best_slot to the first truly open slot.
-      • Flags candidates where NO slot fits as hours_conflict=True.
-
+    Step 0: validate_candidate_slots() — pre-correct best_slot vs opening hours.
     Step 1: Sort by priority descending.
-    Step 2: For each candidate, try preferred slot then all others (day by day).
-    Step 3: Opening hours + fit check per slot (is_open_for_slot + _fits_in_slot).
+    Step 2: For each candidate try preferred slot then fallbacks (day by day).
+    Step 3: Multi-session opening hours + fit check (is_open_for_slot).
+    Step 4: Clamp displayed start_time to when the place actually opens.
     """
-    # ── Step 0: pre-validate best_slot vs opening hours ──
     candidates = validate_candidate_slots(candidates)
-
     sorted_cands = sorted(candidates, key=lambda c: -int(c.get("priority", 3)))
 
     slot_map  = {s["slot_id"]: s for s in slots}
@@ -471,14 +505,14 @@ def schedule_candidates(
             fallback  = [sid for sid in day_slots[day] if pref_slot not in sid]
 
             for slot_id in (preferred + fallback):
-                slot        = slot_map[slot_id]
-                slot_date   = day_dates.get(day) if day_dates else None
+                slot      = slot_map[slot_id]
+                slot_date = day_dates.get(day) if day_dates else None
                 travel_mins = estimate_travel_minutes(
                     slot.get("last_lat"), slot.get("last_lon"), cand_lat, cand_lon
                 )
 
-                # ─ Opening hours check (uses enriched data) ─
-                open_ok, open_reason = is_open_for_slot(
+                # ─ Multi-session opening hours check ─
+                open_ok, open_reason, clamped_start = is_open_for_slot(
                     oh_str, closed_on,
                     slot["start_time"], slot["end_time"],
                     duration_mins, slot_date
@@ -493,37 +527,40 @@ def schedule_candidates(
                 if not _fits_in_slot(cand, slot, travel_mins):
                     continue
 
-                start_t, end_t = _compute_stop_times(slot, travel_mins, duration_hrs)
-                actual_t       = _actual_travel(slot, travel_mins)
+                # ─ Compute times — start clamped to place-open if known ─
+                start_t, end_t = _compute_stop_times(
+                    slot, travel_mins, duration_hrs, clamped_start
+                )
+                actual_t = _actual_travel(slot, travel_mins)
 
                 stop = {
                     # ─ scheduling metadata ─
-                    "day":                    day,
-                    "slot_id":                slot_id,
-                    "slot_name":              slot["slot_name"],
-                    "start_time":             start_t,
-                    "end_time":               end_t,
-                    "travel_mins_from_prev":  actual_t,
+                    "day":                      day,
+                    "slot_id":                  slot_id,
+                    "slot_name":                slot["slot_name"],
+                    "start_time":               start_t,
+                    "end_time":                 end_t,
+                    "travel_mins_from_prev":     actual_t,
                     # ─ place identity ─
-                    "place_name":             cand.get("place_name", "Unknown"),
-                    "category":               cand.get("category"),
-                    "priority":               int(cand.get("priority", 3)),
-                    "why_must_visit":         cand.get("why_must_visit"),
-                    "is_alternate":           bool(cand.get("is_alternate", False)),
-                    # ─ from enrich (accurate) ─
-                    "opening_hours":          oh_str,
-                    "closed_on":              closed_on or None,
-                    "duration_hrs":           duration_hrs,
-                    "entry_fee":              cand.get("entry_fee"),
-                    "entry_fee_foreign":      cand.get("entry_fee_foreign"),
-                    "tip":                    cand.get("tip"),
-                    "nearby_food":            cand.get("nearby_food"),
+                    "place_name":               cand.get("place_name", "Unknown"),
+                    "category":                 cand.get("category"),
+                    "priority":                 int(cand.get("priority", 3)),
+                    "why_must_visit":            cand.get("why_must_visit"),
+                    "is_alternate":              bool(cand.get("is_alternate", False)),
+                    # ─ from enrich ─
+                    "opening_hours":             oh_str,
+                    "closed_on":                 closed_on or None,
+                    "duration_hrs":              duration_hrs,
+                    "entry_fee":                 cand.get("entry_fee"),
+                    "entry_fee_foreign":         cand.get("entry_fee_foreign"),
+                    "tip":                       cand.get("tip"),
+                    "nearby_food":               cand.get("nearby_food"),
                     # ─ from geocode ─
-                    "lat":                    cand_lat,
-                    "lon":                    cand_lon,
-                    # ─ scheduler flags ─
-                    "opening_hours_unverified": open_ok is None,
-                    "hours_conflict":           bool(cand.get("hours_conflict", False)),
+                    "lat":                       cand_lat,
+                    "lon":                       cand_lon,
+                    # ─ flags ─
+                    "opening_hours_unverified":  open_ok is None,
+                    "hours_conflict":            bool(cand.get("hours_conflict", False)),
                 }
 
                 slot["remaining_mins"] -= (actual_t + duration_mins)

@@ -15,6 +15,7 @@ OPENTRIPMAP_API_KEY = os.getenv("OPENTRIPMAP_API_KEY", "")
 
 # ─────────────────────────────────────────
 async def geocode_city(city: str) -> Optional[Dict]:
+    """Geocode a city/destination name (no place-specific context)."""
     if not GEOAPIFY_API_KEY:
         logger.warning("GEOAPIFY_API_KEY not set — geocoding skipped")
         return None
@@ -28,6 +29,77 @@ async def geocode_city(city: str) -> Optional[Dict]:
                 return {"lat": props["lat"], "lon": props["lon"]}
     except Exception as e:
         logger.warning(f"Geocoding failed for '{city}': {e}")
+    return None
+
+
+async def geocode_place(
+    place_name: str,
+    city: str,
+    state: str = "Tamil Nadu",
+    country: str = "India",
+) -> Optional[Dict]:
+    """
+    Geocode a specific place name anchored to its city/state/country so the
+    geocoder never matches a similarly-named place in a different region.
+
+    Query format: "<place_name>, <city>, <state>, <country>"
+    Falls back to "<place_name>, <country>" if nothing found for the precise query.
+    """
+    if not GEOAPIFY_API_KEY:
+        logger.warning("GEOAPIFY_API_KEY not set — geocoding skipped")
+        return None
+
+    queries = [
+        f"{place_name}, {city}, {state}, {country}",
+        f"{place_name}, {state}, {country}",
+    ]
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        for query in queries:
+            try:
+                url = (
+                    f"https://api.geoapify.com/v1/geocode/search"
+                    f"?text={query}&apiKey={GEOAPIFY_API_KEY}"
+                )
+                res  = await client.get(url)
+                data = res.json()
+                if not data.get("features"):
+                    continue
+
+                props    = data["features"][0]["properties"]
+                result_lat = props["lat"]
+                result_lon = props["lon"]
+
+                # ── Sanity-check: result must be within ~100 km of city ──
+                city_coords = await geocode_city(city)
+                if city_coords:
+                    import math
+                    dlat = math.radians(result_lat - city_coords["lat"])
+                    dlon = math.radians(result_lon - city_coords["lon"])
+                    a = (
+                        math.sin(dlat / 2) ** 2
+                        + math.cos(math.radians(city_coords["lat"]))
+                        * math.cos(math.radians(result_lat))
+                        * math.sin(dlon / 2) ** 2
+                    )
+                    dist_km = 6371 * 2 * math.asin(math.sqrt(a))
+                    if dist_km > 100:
+                        logger.warning(
+                            f"[geocode] '{place_name}': result ({result_lat:.4f},{result_lon:.4f}) "
+                            f"is {dist_km:.0f} km from {city} — discarding"
+                        )
+                        continue
+
+                logger.debug(
+                    f"[geocode] '{place_name}' → ({result_lat:.5f}, {result_lon:.5f})"
+                    f"  [query='{query}']"
+                )
+                return {"lat": result_lat, "lon": result_lon}
+
+            except Exception as e:
+                logger.warning(f"Geocoding failed for '{place_name}' query='{query}': {e}")
+
+    logger.warning(f"[geocode] '{place_name}': no valid result within 100 km of '{city}'")
     return None
 
 
@@ -150,13 +222,30 @@ async def get_place_details(place_id: str) -> Optional[Dict]:
         return None
 
 
-async def enrich_itinerary_with_places(raw_itinerary: list) -> list:
+async def enrich_itinerary_with_places(
+    raw_itinerary: list,
+    destination: str = "",
+    state: str = "Tamil Nadu",
+) -> list:
+    """
+    Geocode every stop in the itinerary, anchoring each place name to the
+    trip destination so results can't drift to wrong cities/countries.
+    """
     for stop in raw_itinerary:
+        place_name = stop.get("place_name", "")
         try:
-            coords = await geocode_city(stop.get("place_name", ""))
+            coords = await geocode_place(
+                place_name,
+                city=destination or place_name,
+                state=state,
+            )
             if coords:
                 stop["lat"] = coords["lat"]
                 stop["lon"] = coords["lon"]
+            else:
+                logger.warning(
+                    f"[enrich] '{place_name}': geocode returned None — coords unchanged"
+                )
         except Exception as e:
-            logger.warning(f"Geocoding stop '{stop.get('place_name')}' failed: {e}")
+            logger.warning(f"Geocoding stop '{place_name}' failed: {e}")
     return raw_itinerary
