@@ -205,15 +205,18 @@ def is_open_for_slot(
     slot_date: Optional[date] = None,
 ) -> Tuple[Optional[bool], str, Optional[int]]:
     """
-    Check whether a place can be visited during a slot.
+    Pre-check: can the place fit *somewhere* within the slot window?
 
     Returns (open_ok, reason, clamped_start_mins).
 
-    clamped_start_mins is max(slot_start_mins, place_open_mins) — i.e. the
-    earliest minute inside the slot when the place is actually open.
-    This is then used by _compute_stop_times to push the display start time
-    forward if needed, but it must ALSO be combined with the slot cursor
-    (time already consumed by previous stops) in _compute_stop_times.
+    clamped_start_mins = max(slot_start, place_open) — the earliest minute
+    in the slot when the place is open. This is passed into _compute_stop_times
+    and the final _fits_in_slot_v2 check, which verifies the *actual* computed
+    interval (based on last_end_mins cursor) against open sessions.
+
+    NOTE: This function validates feasibility at slot level only. A second
+    hard check in _fits_in_slot_v2 rejects placements where the cursor has
+    moved past the closing time.
     """
     s_mins = _hm_to_mins(slot_start)
     e_mins = _hm_to_mins(slot_end)
@@ -325,15 +328,15 @@ def validate_candidate_slots(candidates: list) -> list:
         )
 
         if slot_ok:
-            logger.debug(f"[validate] '{name}': best_slot='{pref}' ✔️")
+            logger.debug(f"[validate] '{name}': best_slot='{pref}' \u2714\ufe0f")
             continue
 
         corrected = _first_valid_slot(oh_str, dur_mins)
         if corrected and corrected != pref:
             sess_str = ", ".join(f"{_mins_to_time(o)}-{_mins_to_time(c%1440)}" for o, c in sessions)
             logger.info(
-                f"[validate] '{name}': best_slot '{pref}' ✖ "
-                f"(hours: {sess_str}) → corrected to '{corrected}'"
+                f"[validate] '{name}': best_slot '{pref}' \u2716 "
+                f"(hours: {sess_str}) \u2192 corrected to '{corrected}'"
             )
             cand["best_slot"] = corrected
         elif not corrected:
@@ -362,6 +365,13 @@ def build_day_slots(days: int) -> List[Dict]:
                 "stops":          [],
                 "last_lat":       None,
                 "last_lon":       None,
+                # ── Cursor tracking (FIX 1) ──────────────────────────────
+                # Tracks the real end-time of the last placed stop in minutes.
+                # Initialized to slot start. Updated after every placement.
+                # Replaces `available_mins - remaining_mins` arithmetic which
+                # broke when clamped_start pushed a stop's display time forward
+                # without that gap being subtracted from remaining_mins.
+                "last_end_mins":  _hm_to_mins(tmpl["start"]),
             })
     return slots
 
@@ -390,11 +400,6 @@ def _actual_travel(slot: dict, travel_mins: int) -> int:
     return 0 if not slot["stops"] else travel_mins
 
 
-def _fits_in_slot(candidate: dict, slot: dict, travel_mins: int) -> bool:
-    needed = _actual_travel(slot, travel_mins) + int(candidate.get("duration_hrs", 1.0) * 60)
-    return needed <= slot["remaining_mins"]
-
-
 def _compute_stop_times(
     slot: dict,
     travel_mins: int,
@@ -404,38 +409,75 @@ def _compute_stop_times(
     """
     Compute the actual start/end times for a stop.
 
-    clamped_start: minute-of-day returned by is_open_for_slot() —
-      max(slot_start, place_open). Indicates the earliest point inside the
-      slot window when the place is actually open.
+    Uses slot['last_end_mins'] as the real cursor — the end time of
+    the previously placed stop (or slot start if no prior stops).
 
-    BUG FIX (overlap): The previous implementation used:
-        start_mins = clamped_start + actual_t
-    which ignored how far the slot cursor had already advanced due to prior
-    stops, causing time overlaps whenever clamped_start == slot_start and
-    multiple stops occupied the same slot.
+    Formula:
+        start = max(last_end_mins, clamped_start) + actual_travel
+        end   = start + duration_mins
 
-    Correct logic:
-        cursor_mins = slot_start + time_already_consumed_in_slot
-        start_mins  = max(cursor_mins, clamped_start) + actual_travel
-
-    This ensures:
-      1. We never go earlier than the slot cursor (no overlaps).
-      2. We never go earlier than when the place opens (clamped_start).
-      3. Travel time is always added on top.
+    This guarantees:
+      1. start >= last_end_mins  → no overlap with previous stop
+      2. start >= clamped_start  → no visit before place opens
+      3. travel is always added on top of both constraints
     """
-    actual_t   = _actual_travel(slot, travel_mins)
-    base_mins  = _hm_to_mins(slot["start_time"])
-    used_mins  = slot["available_mins"] - slot["remaining_mins"]
-    cursor_mins = base_mins + used_mins   # where the slot cursor is RIGHT NOW
+    actual_t = _actual_travel(slot, travel_mins)
+    cursor   = slot["last_end_mins"]   # real end of last stop
 
     if clamped_start is not None:
-        # Push forward to whichever is later: current cursor OR place-open time
-        start_mins = max(cursor_mins, clamped_start) + actual_t
+        start_mins = max(cursor, clamped_start) + actual_t
     else:
-        start_mins = cursor_mins + actual_t
+        start_mins = cursor + actual_t
 
     end_mins = start_mins + int(duration_hrs * 60)
     return _mins_to_time(start_mins), _mins_to_time(end_mins)
+
+
+def _fits_in_slot_v2(
+    slot: dict,
+    travel_mins: int,
+    duration_hrs: float,
+    clamped_start: Optional[int],
+    oh_str: Optional[str],
+) -> bool:
+    """
+    FIX 1 — Use last_end_mins cursor for fit check (not remaining_mins arithmetic).
+    FIX 2 — Revalidate the *actual* computed interval against open sessions.
+
+    Both checks must pass:
+      A. computed_end <= slot_end_mins  (stop fits in the slot window)
+      B. computed interval lies within at least one open session
+         (prevents scheduling past closing time when cursor moved forward)
+
+    Check B is skipped when opening hours are unparseable (lenient mode).
+    """
+    actual_t   = _actual_travel(slot, travel_mins)
+    cursor     = slot["last_end_mins"]
+    slot_end   = _hm_to_mins(slot["end_time"])
+
+    if clamped_start is not None:
+        start = max(cursor, clamped_start) + actual_t
+    else:
+        start = cursor + actual_t
+    end = start + int(duration_hrs * 60)
+
+    # A — must fit within slot window
+    if end > slot_end:
+        return False
+
+    # B — must still be within an open session at actual computed time
+    if oh_str:
+        sessions = _parse_sessions(oh_str)
+        if sessions:  # only hard-check when hours are parseable
+            actually_open = any(o <= start and end <= c for o, c in sessions)
+            if not actually_open:
+                logger.debug(
+                    f"[fits] rejected: actual {_mins_to_time(start)}-{_mins_to_time(end)} "
+                    f"outside open sessions {[(f'{_mins_to_time(o)}-{_mins_to_time(c%(24*60))}') for o,c in sessions]}"
+                )
+                return False
+
+    return True
 
 
 # ─────────────────────────────────────────────────────────────
@@ -454,8 +496,9 @@ def schedule_candidates(
     Step 0: validate_candidate_slots() — pre-correct best_slot vs opening hours.
     Step 1: Sort by priority descending.
     Step 2: For each candidate try preferred slot then fallbacks (day by day).
-    Step 3: Multi-session opening hours + fit check (is_open_for_slot).
-    Step 4: Clamp displayed start_time to max(cursor, place_open) to prevent overlaps.
+    Step 3: Slot-level opening hours feasibility check (is_open_for_slot).
+    Step 4: Actual-time fit check (_fits_in_slot_v2) — cursor-aware + OH revalidation.
+    Step 5: Compute and record times; update slot cursor (last_end_mins).
     """
     candidates = validate_candidate_slots(candidates)
     sorted_cands = sorted(candidates, key=lambda c: -int(c.get("priority", 3)))
@@ -491,6 +534,7 @@ def schedule_candidates(
                     slot.get("last_lat"), slot.get("last_lon"), cand_lat, cand_lon
                 )
 
+                # Step 3: slot-level opening hours check
                 open_ok, open_reason, clamped_start = is_open_for_slot(
                     oh_str, closed_on,
                     slot["start_time"], slot["end_time"],
@@ -502,14 +546,21 @@ def schedule_candidates(
                     )
                     continue
 
-                if not _fits_in_slot(cand, slot, travel_mins):
+                # Step 4: actual-time fit check (cursor-aware + OH revalidation)
+                if not _fits_in_slot_v2(slot, travel_mins, duration_hrs, clamped_start, oh_str):
+                    logger.debug(
+                        f"[sched] no fit '{cand.get('place_name')}' in {slot_id} "
+                        f"(cursor={_mins_to_time(slot['last_end_mins'])}, "
+                        f"travel={travel_mins}, dur={duration_mins})"
+                    )
                     continue
 
-                # Compute times using cursor-aware clamping (prevents overlaps)
+                # Step 5: compute and record
                 start_t, end_t = _compute_stop_times(
                     slot, travel_mins, duration_hrs, clamped_start
                 )
-                actual_t = _actual_travel(slot, travel_mins)
+                actual_t    = _actual_travel(slot, travel_mins)
+                end_mins    = _hm_to_mins(end_t)
 
                 stop = {
                     "day":                      day,
@@ -536,7 +587,9 @@ def schedule_candidates(
                     "hours_conflict":            bool(cand.get("hours_conflict", False)),
                 }
 
-                slot["remaining_mins"] -= (actual_t + duration_mins)
+                # Update slot cursor: last_end_mins = actual end of this stop
+                slot["last_end_mins"] = end_mins
+                slot["remaining_mins"] = _hm_to_mins(slot["end_time"]) - end_mins
                 slot["stops"].append(stop)
                 if cand_lat and cand_lon:
                     slot["last_lat"] = cand_lat
@@ -545,7 +598,7 @@ def schedule_candidates(
                 scheduled.append(stop)
                 placed = True
                 flag = "\u2705" if open_ok else "\u26a0\ufe0f"
-                logger.debug(f"[sched] {flag} '{cand.get('place_name')}' → {slot_id} @ {start_t}")
+                logger.debug(f"[sched] {flag} '{cand.get('place_name')}' \u2192 {slot_id} @ {start_t}")
                 break
 
             if placed:
