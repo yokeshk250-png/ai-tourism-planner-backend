@@ -5,8 +5,8 @@ from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-FOURSQUARE_API_KEY = os.getenv("FOURSQUARE_API_KEY", "")
-GEOAPAFY_API_KEY   = os.getenv("GEOAPIFY_API_KEY", "")
+FOURSQUARE_API_KEY  = os.getenv("FOURSQUARE_API_KEY", "")
+GEOAPIFY_API_KEY    = os.getenv("GEOAPIFY_API_KEY", "")    # ← Fixed: was GEOAPAFY_API_KEY
 OPENTRIPMAP_API_KEY = os.getenv("OPENTRIPMAP_API_KEY", "")
 
 
@@ -77,6 +77,7 @@ async def _foursquare_search(lat, lon, category, limit) -> List[Dict]:
 
 async def _geoapify_search(lat, lon, category, limit) -> List[Dict]:
     if not GEOAPIFY_API_KEY:
+        logger.warning("GEOAPIFY_API_KEY not set — skipping Geoapify")
         return []
     params = {
         "categories": "tourism",
@@ -105,6 +106,7 @@ async def _geoapify_search(lat, lon, category, limit) -> List[Dict]:
 
 async def _opentripmap_search(lat, lon, category, limit) -> List[Dict]:
     if not OPENTRIPMAP_API_KEY:
+        logger.warning("OPENTRIPMAP_API_KEY not set — skipping OpenTripMap")
         return []
     params = {
         "radius": 15000, "lon": lon, "lat": lat,
