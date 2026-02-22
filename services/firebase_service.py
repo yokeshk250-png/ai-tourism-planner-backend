@@ -2,20 +2,19 @@ import os
 import logging
 from datetime import datetime
 from typing import Optional, List
+from dotenv import load_dotenv
+
+load_dotenv()  # ← Ensure .env is loaded before Firebase init
 
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────
-# Lazy Firebase initialization
-# Avoids crash at import time if serviceAccountKey.json is missing
-# ─────────────────────────────────────────
 _db = None
+
 
 def get_db():
     global _db
     if _db is not None:
         return _db
-
     try:
         import firebase_admin
         from firebase_admin import credentials, firestore
@@ -30,30 +29,22 @@ def get_db():
                 )
             cred = credentials.Certificate(cred_path)
             firebase_admin.initialize_app(cred)
-            logger.info("Firebase initialized successfully ✅")
+            logger.info("Firebase initialized ✅")
 
         _db = firestore.client()
         return _db
-
     except Exception as e:
         logger.warning(f"Firebase unavailable: {e}")
         return None
 
 
-# ─────────────────────────────────────────
-# Itinerary CRUD
-# ─────────────────────────────────────────
 async def save_itinerary(user_id: str, itinerary: dict) -> str:
     db = get_db()
     if not db:
-        raise RuntimeError("Firebase is not configured. Add serviceAccountKey.json to project root.")
+        raise RuntimeError("Firebase not configured. Add serviceAccountKey.json to project root.")
     doc_ref = db.collection("users").document(user_id) \
                 .collection("itineraries").document()
-    doc_ref.set({
-        **itinerary,
-        "user_id": user_id,
-        "created_at": datetime.utcnow().isoformat()
-    })
+    doc_ref.set({**itinerary, "user_id": user_id, "created_at": datetime.utcnow().isoformat()})
     return doc_ref.id
 
 
@@ -80,18 +71,13 @@ async def get_user_itineraries(user_id: str) -> List[dict]:
     return [{"id": doc.id, **doc.to_dict()} for doc in docs]
 
 
-# ─────────────────────────────────────────
-# Ratings
-# ─────────────────────────────────────────
 async def save_place_rating(user_id: str, place_id: str, rating: int, review: str = "") -> None:
     db = get_db()
     if not db:
-        raise RuntimeError("Firebase is not configured.")
+        raise RuntimeError("Firebase not configured.")
     db.collection("ratings").document(f"{user_id}_{place_id}").set({
-        "user_id": user_id,
-        "place_id": place_id,
-        "rating": rating,
-        "review": review,
+        "user_id": user_id, "place_id": place_id,
+        "rating": rating, "review": review,
         "rated_at": datetime.utcnow().isoformat()
     })
 
@@ -111,9 +97,6 @@ async def get_avg_rating(place_id: str) -> Optional[float]:
     return round(sum(r["rating"] for r in ratings) / len(ratings), 1)
 
 
-# ─────────────────────────────────────────
-# User Preferences
-# ─────────────────────────────────────────
 async def save_user_preferences(user_id: str, preferences: dict) -> None:
     db = get_db()
     if not db:

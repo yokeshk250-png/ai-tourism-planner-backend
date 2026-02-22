@@ -2,11 +2,14 @@ import os
 import logging
 import httpx
 from typing import List, Dict, Optional
+from dotenv import load_dotenv
+
+load_dotenv()  # ← Must be before os.getenv() module-level reads
 
 logger = logging.getLogger(__name__)
 
 FOURSQUARE_API_KEY  = os.getenv("FOURSQUARE_API_KEY", "")
-GEOAPIFY_API_KEY    = os.getenv("GEOAPIFY_API_KEY", "")    # ← Fixed: was GEOAPAFY_API_KEY
+GEOAPIFY_API_KEY    = os.getenv("GEOAPIFY_API_KEY", "")
 OPENTRIPMAP_API_KEY = os.getenv("OPENTRIPMAP_API_KEY", "")
 
 
@@ -50,7 +53,7 @@ async def _foursquare_search(lat, lon, category, limit) -> List[Dict]:
         logger.warning("FOURSQUARE_API_KEY not set — skipping Foursquare")
         return []
     headers = {"Authorization": FOURSQUARE_API_KEY, "Accept": "application/json"}
-    params  = {
+    params = {
         "ll": f"{lat},{lon}", "query": category, "limit": limit,
         "radius": 15000, "fields": "name,location,categories,hours,rating,photos"
     }

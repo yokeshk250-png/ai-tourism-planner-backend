@@ -2,6 +2,9 @@ import os
 import logging
 import httpx
 from typing import List, Dict
+from dotenv import load_dotenv
+
+load_dotenv()  # ← Ensure .env is loaded before os.getenv calls
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +14,7 @@ WARNING_CONDITIONS = ["Rain", "Thunderstorm", "Drizzle", "Snow", "Extreme"]
 async def get_weather_forecast(city: str, days: int = 3) -> List[Dict]:
     """
     Fetch weather forecast from OpenWeatherMap.
-    Returns graceful empty list if OPENWEATHER_API_KEY is not configured.
+    Returns empty list gracefully if OPENWEATHER_API_KEY is not set.
     """
     api_key = os.getenv("OPENWEATHER_API_KEY")
 
@@ -39,7 +42,6 @@ async def get_weather_forecast(city: str, days: int = 3) -> List[Dict]:
         logger.warning(f"Weather API error for '{city}': {data.get('message', 'unknown')}")
         return []
 
-    # Summarize per day
     daily = {}
     for item in data.get("list", []):
         date = item["dt_txt"].split(" ")[0]
