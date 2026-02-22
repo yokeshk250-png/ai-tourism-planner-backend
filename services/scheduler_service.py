@@ -6,9 +6,9 @@ from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # Slot template
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 SLOT_TEMPLATE = [
     {
         "slot_name": "morning",
@@ -45,11 +45,11 @@ TRAVEL_BUFFER_MINS  = 10
 DEFAULT_TRAVEL_MINS = 15
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # Opening hours parser
 # Handles: 24/7, "9:00 AM - 6:00 PM", "09:00-18:00",
 #          "Tue-Sun 9 AM to 6 PM", OSM "Mo-Fr 08:00-17:00; Sa off"
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 
 _OSM_ABBR   = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
 _OSM_TO_IDX = {d: i for i, d in enumerate(_OSM_ABBR)}
@@ -71,7 +71,9 @@ def _hm_to_mins(hm: str) -> int:
 
 
 def _mins_to_time(mins: int) -> str:
-    return f"{mins // 60:02d}:{mins % 60:02d}"
+    h = mins // 60
+    m = mins % 60
+    return f"{h:02d}:{m:02d}"
 
 
 def _ampm_to_mins(s: str) -> Optional[int]:
@@ -80,7 +82,10 @@ def _ampm_to_mins(s: str) -> Optional[int]:
     if not m:
         return None
     hh, mm, ap = int(m.group(1)), int(m.group(2) or 0), m.group(3)
-    hh = (0 if hh == 12 else hh) if ap == "am" else (hh if hh == 12 else hh + 12)
+    if ap == "am":
+        hh = 0 if hh == 12 else hh
+    else:
+        hh = hh if hh == 12 else hh + 12
     return hh * 60 + mm
 
 
@@ -94,10 +99,16 @@ def _parse_time_str(s: str) -> Optional[int]:
 
 
 def _parse_daily_range(opening_hours: str) -> Optional[Tuple[int, int]]:
+    """
+    Extract first and last time token from the string.
+    Handles: '9:00 AM - 6:00 PM', '09:00-18:00',
+             'Tue-Sun 9:00 AM to 6:00 PM', 'Everyday 6 AM - 9 PM'
+    """
     s = opening_hours.strip()
     if re.search(r"(24/7|open\s*24|always\s*open)", s, re.IGNORECASE):
         return (0, 24 * 60)
-    tokens = re.findall(r"\d{1,2}(?::\d{2})?\s*(?:am|pm)|\d{2}:\d{2}", s, re.IGNORECASE)
+    time_pat = r"\d{1,2}(?::\d{2})?\s*(?:am|pm)|\d{2}:\d{2}"
+    tokens   = re.findall(time_pat, s, re.IGNORECASE)
     if len(tokens) < 2:
         return None
     t1 = _parse_time_str(tokens[0].strip())
@@ -117,7 +128,8 @@ def _expand_osm_days(token: str) -> List[int]:
             out.extend(_expand_osm_days(t.strip()))
         return out
     if "-" in token:
-        a, b = [x.strip() for x in token.split("-", 1)]
+        a, b = token.split("-", 1)
+        a, b = a.strip(), b.strip()
         if a in _OSM_TO_IDX and b in _OSM_TO_IDX:
             ia, ib = _OSM_TO_IDX[a], _OSM_TO_IDX[b]
             return list(range(ia, ib + 1)) if ia <= ib else list(range(ia, 7)) + list(range(0, ib + 1))
@@ -127,7 +139,9 @@ def _expand_osm_days(token: str) -> List[int]:
 
 def _parse_osm_schedule(field: str) -> Optional[Dict[int, List[Tuple[int, int]]]]:
     field = (field or "").strip()
-    if not field or not re.search(r"\b(Mo|Tu|We|Th|Fr|Sa|Su)\b", field):
+    if not field:
+        return None
+    if not re.search(r"\b(Mo|Tu|We|Th|Fr|Sa|Su)\b", field):
         return None
 
     out: Dict[int, List[Tuple[int, int]]] = {i: [] for i in range(7)}
@@ -152,7 +166,8 @@ def _parse_osm_schedule(field: str) -> Optional[Dict[int, List[Tuple[int, int]]]
             tm = re.match(r"^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$", t)
             if not tm:
                 continue
-            o, c = _hm_to_mins(tm.group(1)), _hm_to_mins(tm.group(2))
+            o = _hm_to_mins(tm.group(1))
+            c = _hm_to_mins(tm.group(2))
             if c < o:
                 c += 24 * 60
             intervals.append((o, c))
@@ -181,13 +196,14 @@ def is_open_for_slot(
         visit_end  <= min(slot_end,  place_close)
 
     Returns:
-        (True,  "")       confirmed open and fits
-        (False, reason)   confirmed closed / won't fit  → skip slot
-        (None,  reason)   unknown / unparseable          → schedule with warning
+        (True,  "")      — confirmed open and fits
+        (False, reason)  — confirmed closed / won't fit  → skip slot
+        (None,  reason)  — unknown / unparseable          → schedule with warning
     """
     s_mins = _hm_to_mins(slot_start)
     e_mins = _hm_to_mins(slot_end)
 
+    # 1. closed_on list
     if closed_on and slot_date:
         wd = slot_date.weekday()
         for day_str in closed_on:
@@ -202,6 +218,7 @@ def is_open_for_slot(
     if low in ("24/7", "open24hrs", "open24hours", "open24h", "alwaysopen", "open24"):
         return (True, "")
 
+    # 2. Simple daily range
     daily = _parse_daily_range(opening_hours)
     if daily:
         o, c = daily
@@ -215,6 +232,7 @@ def is_open_for_slot(
             f"slot {slot_start}-{slot_end}, need {duration_mins}min"
         )
 
+    # 3. OSM weekday schedule
     osm = _parse_osm_schedule(opening_hours)
     if osm is not None:
         if slot_date is None:
@@ -237,9 +255,9 @@ def is_open_for_slot(
     return (None, f"Unparseable hours: {opening_hours!r:.60}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # Slot builder
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 def build_day_slots(days: int) -> List[Dict]:
     slots = []
     for day in range(1, days + 1):
@@ -260,9 +278,9 @@ def build_day_slots(days: int) -> List[Dict]:
     return slots
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # Travel estimation
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     R = 6371.0
     dlat = math.radians(lat2 - lat1)
@@ -281,7 +299,6 @@ def estimate_travel_minutes(lat1, lon1, lat2, lon2) -> int:
 
 
 def _actual_travel(slot: dict, travel_mins: int) -> int:
-    """First stop in a slot has zero travel overhead."""
     return 0 if not slot["stops"] else travel_mins
 
 
@@ -295,179 +312,13 @@ def _compute_stop_times(slot: dict, travel_mins: int, duration_hrs: float) -> Tu
     used_mins  = slot["available_mins"] - slot["remaining_mins"]
     actual_t   = _actual_travel(slot, travel_mins)
     start_mins = base_mins + used_mins + actual_t
-    return _mins_to_time(start_mins), _mins_to_time(start_mins + int(duration_hrs * 60))
+    end_mins   = start_mins + int(duration_hrs * 60)
+    return _mins_to_time(start_mins), _mins_to_time(end_mins)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Shared helpers — build + commit a stop
-# ─────────────────────────────────────────────────────────────────────────────
-def _build_stop(cand: dict, day: int, slot: dict, travel_mins: int,
-                duration_hrs: float, open_ok: Optional[bool]) -> dict:
-    """Construct the full stop dict from candidate + slot placement info."""
-    actual_t        = _actual_travel(slot, travel_mins)
-    start_t, end_t  = _compute_stop_times(slot, travel_mins, duration_hrs)
-    return {
-        "day":                    day,
-        "slot_id":                slot["slot_id"],
-        "slot_name":              slot["slot_name"],
-        "start_time":             start_t,
-        "end_time":               end_t,
-        "travel_mins_from_prev":  actual_t,
-        "place_name":             cand.get("place_name", "Unknown"),
-        "category":               cand.get("category"),
-        "priority":               int(cand.get("priority", 3)),
-        "why_must_visit":         cand.get("why_must_visit"),
-        "is_alternate":           bool(cand.get("is_alternate", False)),
-        "opening_hours":          cand.get("opening_hours"),
-        "closed_on":              cand.get("closed_on") or None,
-        "duration_hrs":           duration_hrs,
-        "entry_fee":              cand.get("entry_fee"),
-        "entry_fee_foreign":      cand.get("entry_fee_foreign"),
-        "tip":                    cand.get("tip"),
-        "nearby_food":            cand.get("nearby_food"),
-        "lat":                    cand.get("lat"),
-        "lon":                    cand.get("lon"),
-        "opening_hours_unverified": open_ok is None,
-    }
-
-
-def _commit_stop(slot: dict, stop: dict) -> None:
-    """Append a stop to a slot and update its mutable state."""
-    actual_t      = stop["travel_mins_from_prev"]
-    duration_mins = int(float(stop["duration_hrs"]) * 60)
-    slot["remaining_mins"] -= (actual_t + duration_mins)
-    slot["stops"].append(stop)
-    if stop.get("lat") and stop.get("lon"):
-        slot["last_lat"] = stop["lat"]
-        slot["last_lon"] = stop["lon"]
-
-
-def _uncommit_last_stop(slot: dict) -> Optional[dict]:
-    """
-    Remove the most-recently-placed stop from a slot and restore slot state.
-    Returns the removed stop, or None if slot is empty.
-
-    Only the LAST stop is removed — avoids cascade recalculation for earlier stops.
-    Restoration is exact because travel_mins_from_prev is stored on the stop itself.
-    """
-    if not slot["stops"]:
-        return None
-
-    stop          = slot["stops"].pop()
-    actual_t      = stop["travel_mins_from_prev"]
-    duration_mins = int(float(stop["duration_hrs"]) * 60)
-    slot["remaining_mins"] += (actual_t + duration_mins)
-
-    # Restore last_lat/lon to the new last stop (or None if slot is now empty)
-    if slot["stops"]:
-        prev = slot["stops"][-1]
-        slot["last_lat"] = prev.get("lat")
-        slot["last_lon"] = prev.get("lon")
-    else:
-        slot["last_lat"] = None
-        slot["last_lon"] = None
-
-    return stop
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Bump rule helpers
-# ─────────────────────────────────────────────────────────────────────────────
-def _can_fit_after_bump(
-    cand: dict,
-    slot: dict,
-    slot_date: Optional[date],
-    duration_mins: int,
-) -> bool:
-    """
-    Simulate: if the last stop were removed from `slot`, would `cand` fit?
-    Does NOT modify the slot.
-    """
-    if not slot["stops"]:
-        return False
-
-    last_stop   = slot["stops"][-1]
-    reclaim     = last_stop["travel_mins_from_prev"] + int(float(last_stop["duration_hrs"]) * 60)
-    sim_remain  = slot["remaining_mins"] + reclaim
-
-    # Simulated last position after removing the last stop
-    if len(slot["stops"]) >= 2:
-        sim_lat = slot["stops"][-2].get("lat")
-        sim_lon = slot["stops"][-2].get("lon")
-    else:
-        sim_lat = sim_lon = None
-
-    travel_to_cand = estimate_travel_minutes(sim_lat, sim_lon, cand.get("lat"), cand.get("lon"))
-    # After bump, slot may be empty → no travel overhead
-    actual_travel  = 0 if len(slot["stops"]) == 1 else travel_to_cand
-    needed         = actual_travel + duration_mins
-
-    if needed > sim_remain:
-        return False
-
-    # Check opening hours for cand in this slot
-    open_ok, _ = is_open_for_slot(
-        cand.get("opening_hours"), cand.get("closed_on") or [],
-        slot["start_time"], slot["end_time"],
-        duration_mins, slot_date
-    )
-    return open_ok is not False   # True or None (lenient) both OK
-
-
-def _try_replace_bumped(
-    bumped_stop: dict,
-    all_slots: List[dict],
-    skip_slot_id: str,
-    day_dates: Optional[Dict[int, date]],
-    scheduled: list,
-) -> bool:
-    """
-    Try to re-place a bumped stop in any other available slot.
-    Modifies `all_slots` and `scheduled` in-place.
-    Returns True if successfully re-placed.
-    """
-    b_dur  = float(bumped_stop.get("duration_hrs", 1.0))
-    b_dmin = int(b_dur * 60)
-
-    for slot in all_slots:
-        if slot["slot_id"] == skip_slot_id:
-            continue
-
-        re_day      = slot["day"]
-        slot_date   = day_dates.get(re_day) if day_dates else None
-        travel_mins = estimate_travel_minutes(
-            slot.get("last_lat"), slot.get("last_lon"),
-            bumped_stop.get("lat"), bumped_stop.get("lon")
-        )
-
-        open_ok, _ = is_open_for_slot(
-            bumped_stop.get("opening_hours"), bumped_stop.get("closed_on") or [],
-            slot["start_time"], slot["end_time"],
-            b_dmin, slot_date
-        )
-        if open_ok is False:
-            continue
-
-        actual_t = _actual_travel(slot, travel_mins)
-        if (actual_t + b_dmin) > slot["remaining_mins"]:
-            continue
-
-        # Re-place bumped stop in this new slot
-        re_stop = _build_stop(bumped_stop, re_day, slot, travel_mins, b_dur, open_ok)
-        _commit_stop(slot, re_stop)
-        scheduled.append(re_stop)
-        logger.info(
-            f"[bump] \u21aa re-placed '{bumped_stop.get('place_name')}' "
-            f"\u2192 {slot['slot_id']} (was bumped out)"
-        )
-        return True
-
-    return False
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Main greedy scheduler  +  bump pass
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# Main greedy scheduler
+# ─────────────────────────────────────────────────────────────
 def schedule_candidates(
     candidates: list,
     slots: list,
@@ -476,34 +327,22 @@ def schedule_candidates(
     day_dates: Optional[Dict[int, date]] = None,
 ) -> Tuple[list, list]:
     """
-    Two-pass greedy scheduler.
+    Greedy scheduler: places candidates into time slots.
 
-    PASS 1 — Standard greedy (priority-ordered):
-        Try the candidate's preferred slot first, then every other slot
-        across all days.  Check opening hours + duration fit.
+    By this point each candidate should be pre-enriched so that:
+      - opening_hours / closed_on   come from the enrich call (accurate)
+      - duration_hrs                comes from avg_visit_duration_hrs (accurate)
+      - best_slot                   comes from best_time_to_visit (accurate)
+      - entry_fee / entry_fee_foreign come from enrich fees
+      - nearby_food                 available for UI display
 
-    PASS 2 — Bump rule (only when Pass 1 fails):
-        Collect every slot whose LAST stop has a strictly lower priority
-        than the incoming candidate.  Sort by that stop's priority ASC
-        (bump the least-important stop first).
-        For each candidate slot:
-          a. Simulate removing its last stop.
-          b. Check whether the incoming candidate fits after the removal.
-          c. If yes:
-               - _uncommit_last_stop  →  frees slot capacity
-               - Remove bumped stop from `scheduled`
-               - Place incoming candidate in the freed slot
-               - Try to re-place the bumped stop anywhere else (_try_replace_bumped)
-               - If it can't be re-placed → add to unscheduled for Groq alternate
-               - Stop (placed = True)
-
-    A candidate reaches `unscheduled` only if both passes fail entirely.
+    These enriched values are all passed through to the scheduled stop dict.
     """
     sorted_cands = sorted(candidates, key=lambda c: -int(c.get("priority", 3)))
 
-    slot_map   = {s["slot_id"]: s for s in slots}
-    days       = sorted(set(s["day"] for s in slots))
-    day_slots  = {d: [s["slot_id"] for s in slots if s["day"] == d] for d in days}
+    slot_map  = {s["slot_id"]: s for s in slots}
+    days      = sorted(set(s["day"] for s in slots))
+    day_slots = {d: [s["slot_id"] for s in slots if s["day"] == d] for d in days}
 
     scheduled:   list = []
     unscheduled: list = []
@@ -518,131 +357,85 @@ def schedule_candidates(
         oh_str        = cand.get("opening_hours")
         closed_on     = cand.get("closed_on") or []
 
-        # ══════════════════════════════════════════
-        # PASS 1 — Standard greedy
-        # ══════════════════════════════════════════
         for day in days:
             if placed:
                 break
+
             preferred = [sid for sid in day_slots[day] if pref_slot in sid]
             fallback  = [sid for sid in day_slots[day] if pref_slot not in sid]
 
             for slot_id in (preferred + fallback):
-                slot      = slot_map[slot_id]
-                slot_date = day_dates.get(day) if day_dates else None
-                t_mins    = estimate_travel_minutes(
+                slot        = slot_map[slot_id]
+                slot_date   = day_dates.get(day) if day_dates else None
+                travel_mins = estimate_travel_minutes(
                     slot.get("last_lat"), slot.get("last_lon"), cand_lat, cand_lon
                 )
 
+                # ─ Opening hours check (uses enriched data) ─
                 open_ok, open_reason = is_open_for_slot(
                     oh_str, closed_on,
                     slot["start_time"], slot["end_time"],
                     duration_mins, slot_date
                 )
                 if open_ok is False:
-                    logger.debug(f"[sched P1] skip '{cand.get('place_name')}' in {slot_id}: {open_reason}")
+                    logger.debug(
+                        f"[sched] skip '{cand.get('place_name')}' in {slot_id}: {open_reason}"
+                    )
                     continue
 
-                if not _fits_in_slot(cand, slot, t_mins):
+                # ─ Duration + travel fit check ─
+                if not _fits_in_slot(cand, slot, travel_mins):
                     continue
 
-                stop = _build_stop(cand, day, slot, t_mins, duration_hrs, open_ok)
-                _commit_stop(slot, stop)
+                start_t, end_t = _compute_stop_times(slot, travel_mins, duration_hrs)
+                actual_t       = _actual_travel(slot, travel_mins)
+
+                stop = {
+                    # ─ scheduling metadata ─
+                    "day":                    day,
+                    "slot_id":                slot_id,
+                    "slot_name":              slot["slot_name"],
+                    "start_time":             start_t,
+                    "end_time":               end_t,
+                    "travel_mins_from_prev":  actual_t,
+                    # ─ place identity ─
+                    "place_name":             cand.get("place_name", "Unknown"),
+                    "category":               cand.get("category"),
+                    "priority":               int(cand.get("priority", 3)),
+                    "why_must_visit":         cand.get("why_must_visit"),
+                    "is_alternate":           bool(cand.get("is_alternate", False)),
+                    # ─ from enrich (accurate) ─
+                    "opening_hours":          oh_str,
+                    "closed_on":              closed_on or None,
+                    "duration_hrs":           duration_hrs,
+                    "entry_fee":              cand.get("entry_fee"),
+                    "entry_fee_foreign":      cand.get("entry_fee_foreign"),
+                    "tip":                    cand.get("tip"),
+                    "nearby_food":            cand.get("nearby_food"),
+                    # ─ from geocode ─
+                    "lat":                    cand_lat,
+                    "lon":                    cand_lon,
+                    # ─ scheduler flag ─
+                    "opening_hours_unverified": open_ok is None,
+                }
+
+                slot["remaining_mins"] -= (actual_t + duration_mins)
+                slot["stops"].append(stop)
+                if cand_lat and cand_lon:
+                    slot["last_lat"] = cand_lat
+                    slot["last_lon"] = cand_lon
+
                 scheduled.append(stop)
                 placed = True
-                logger.debug(
-                    f"[sched P1] {'✅' if open_ok else '⚠️'} "
-                    f"'{cand.get('place_name')}' → {slot_id} @ {stop['start_time']}"
-                )
+                flag = "\u2705" if open_ok else "\u26a0\ufe0f"
+                logger.debug(f"[sched] {flag} '{cand.get('place_name')}' → {slot_id} @ {start_t}")
                 break
 
             if placed:
                 break
 
-        if placed:
-            continue
-
-        # ══════════════════════════════════════════
-        # PASS 2 — Bump rule
-        # Only attempt if candidate has priority > 1
-        # ══════════════════════════════════════════
-        cand_priority = int(cand.get("priority", 3))
-        if cand_priority <= 1:
-            logger.info(f"[sched P2] skip bump for low-priority '{cand.get('place_name')}'")
-            unscheduled.append(cand)
-            continue
-
-        # Gather slots where last stop has lower priority than this candidate
-        bump_targets: List[Tuple[int, str, int]] = []   # (last_stop_priority, slot_id, day)
-        for day in days:
-            for slot_id in day_slots[day]:
-                slot = slot_map[slot_id]
-                if not slot["stops"]:
-                    continue
-                last_p = int(slot["stops"][-1].get("priority", 3))
-                if last_p < cand_priority:
-                    bump_targets.append((last_p, slot_id, day))
-
-        # Sort: try to bump from the slot with the lowest-priority last stop first
-        bump_targets.sort(key=lambda x: x[0])
-
-        for last_p, slot_id, day in bump_targets:
-            slot      = slot_map[slot_id]
-            slot_date = day_dates.get(day) if day_dates else None
-
-            if not _can_fit_after_bump(cand, slot, slot_date, duration_mins):
-                continue
-
-            # ── Perform bump ──
-            bumped_stop = _uncommit_last_stop(slot)   # frees slot capacity
-            if bumped_stop is None:
-                continue
-
-            # Remove bumped stop from the scheduled list
-            for i, s in enumerate(scheduled):
-                if s is bumped_stop:
-                    scheduled.pop(i)
-                    break
-
-            # Place the incoming candidate in the freed slot
-            t_mins    = estimate_travel_minutes(
-                slot.get("last_lat"), slot.get("last_lon"), cand_lat, cand_lon
-            )
-            open_ok, _ = is_open_for_slot(
-                oh_str, closed_on,
-                slot["start_time"], slot["end_time"],
-                duration_mins, slot_date
-            )
-            stop = _build_stop(cand, day, slot, t_mins, duration_hrs, open_ok)
-            _commit_stop(slot, stop)
-            scheduled.append(stop)
-            placed = True
-
-            logger.info(
-                f"[sched P2] \U0001f504 bumped '{bumped_stop.get('place_name')}' "
-                f"(p={last_p}) out of {slot_id} "
-                f"to fit '{cand.get('place_name')}' (p={cand_priority})"
-            )
-
-            # ── Try to re-place the bumped stop elsewhere ──
-            re_placed = _try_replace_bumped(
-                bumped_stop, slots, skip_slot_id=slot_id,
-                day_dates=day_dates, scheduled=scheduled
-            )
-            if not re_placed:
-                logger.info(
-                    f"[sched P2] '{bumped_stop.get('place_name')}' "
-                    f"could not be re-placed → unscheduled"
-                )
-                unscheduled.append(bumped_stop)
-
-            break   # candidate placed, stop trying other bump targets
-
         if not placed:
-            logger.info(
-                f"[sched] unscheduled: '{cand.get('place_name')}' "
-                f"(p={cand_priority}, dur={duration_hrs}h) — no slot or bump available"
-            )
+            logger.info(f"[sched] unscheduled: '{cand.get('place_name')}' (dur={duration_hrs}h)")
             unscheduled.append(cand)
 
     logger.info(f"[sched] done: {len(scheduled)} placed, {len(unscheduled)} unscheduled")
