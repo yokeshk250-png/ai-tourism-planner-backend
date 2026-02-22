@@ -45,18 +45,17 @@ TRAVEL_BUFFER_MINS  = 10
 DEFAULT_TRAVEL_MINS = 15
 
 # ─────────────────────────────────────────────────────────────
-# Slot fallback order
+# Slot fallback order (closest slot types to try when preferred is full)
 #
-# When the preferred slot is full or hours don't fit, try slots in this order:
-#   morning   → morning → afternoon → evening → night
-#   afternoon → afternoon → morning → evening → night
-#   evening   → evening → afternoon → night → morning
-#   night     → night → evening → afternoon → morning
+# Trial order built per candidate:
+#   For each day (day1, day2, …):
+#     1. preferred slot on THIS day
+#     2. next closest slot on THIS day
+#     3. … all slots on this day exhausted → move to next day
 #
-# Crucially, the trial order is built ACROSS ALL DAYS per slot type:
-#   (day1_morning, day2_morning, day3_morning,
-#    day1_afternoon, day2_afternoon, …)
-# so a must-visit candidate gets day2_morning before day1_afternoon.
+# Example: best_slot="morning", 2-day trip
+#   day1_morning → day1_afternoon → day1_evening → day1_night
+#   → day2_morning → day2_afternoon → day2_evening → day2_night
 # ─────────────────────────────────────────────────────────────
 SLOT_FALLBACK_ORDER: Dict[str, List[str]] = {
     "morning":   ["morning", "afternoon", "evening", "night"],
@@ -120,11 +119,6 @@ def _parse_time_str(s: str) -> Optional[int]:
 
 
 def _parse_daily_range(opening_hours: str) -> Optional[Tuple[int, int]]:
-    """
-    Extract first and last time token from the string.
-    Handles: '9:00 AM - 6:00 PM', '09:00-18:00',
-             'Tue-Sun 9:00 AM to 6:00 PM', 'Everyday 6 AM - 9 PM'
-    """
     s = opening_hours.strip()
     if re.search(r"(24/7|open\s*24|always\s*open)", s, re.IGNORECASE):
         return (0, 24 * 60)
@@ -208,23 +202,9 @@ def is_open_for_slot(
     duration_mins: int,
     slot_date: Optional[date] = None,
 ) -> Tuple[Optional[bool], str]:
-    """
-    Check whether a place can be visited during a slot.
-
-    Valid when:
-        visit_start = max(slot_start, place_open)
-        visit_end   = visit_start + duration_mins
-        visit_end  <= min(slot_end,  place_close)
-
-    Returns:
-        (True,  "")      — confirmed open and fits
-        (False, reason)  — confirmed closed / won't fit  → skip slot
-        (None,  reason)  — unknown / unparseable          → schedule with warning
-    """
     s_mins = _hm_to_mins(slot_start)
     e_mins = _hm_to_mins(slot_end)
 
-    # 1. closed_on list
     if closed_on and slot_date:
         wd = slot_date.weekday()
         for day_str in closed_on:
@@ -239,7 +219,6 @@ def is_open_for_slot(
     if low in ("24/7", "open24hrs", "open24hours", "open24h", "alwaysopen", "open24"):
         return (True, "")
 
-    # 2. Simple daily range
     daily = _parse_daily_range(opening_hours)
     if daily:
         o, c = daily
@@ -253,7 +232,6 @@ def is_open_for_slot(
             f"slot {slot_start}-{slot_end}, need {duration_mins}min"
         )
 
-    # 3. OSM weekday schedule
     osm = _parse_osm_schedule(opening_hours)
     if osm is not None:
         if slot_date is None:
@@ -301,37 +279,40 @@ def build_day_slots(days: int) -> List[Dict]:
 
 # ─────────────────────────────────────────────────────────────
 # Trial-order builder
+#
+# Builds a flat (day, slot_id) list:
+#   For EACH day in order:
+#     try preferred slot first, then next-closest slot,
+#     then next, then last  (all on the same day)
+#   Only when all slots on this day are exhausted, move to the next day.
+#
+# Example: best_slot="morning", 2-day trip
+#   [(1, day1_morning), (1, day1_afternoon), (1, day1_evening), (1, day1_night),
+#    (2, day2_morning), (2, day2_afternoon), (2, day2_evening), (2, day2_night)]
 # ─────────────────────────────────────────────────────────────
 def _build_trial_order(
     pref_slot: str,
     days: List[int],
     day_slots: Dict[int, List[str]],
 ) -> List[Tuple[int, str]]:
-    """
-    Return a flat (day, slot_id) list ordered so that:
-      1. The preferred slot is tried on ALL days before any fallback slot.
-      2. Fallback slots are ordered by temporal closeness to the preferred slot
-         (defined in SLOT_FALLBACK_ORDER).
-
-    Example for best_slot="morning" on a 2-day trip:
-      day1_morning, day2_morning,          <- preferred on every day first
-      day1_afternoon, day2_afternoon,      <- next closest
-      day1_evening, day2_evening,
-      day1_night, day2_night
-
-    This guarantees a must-visit temple that shares "morning" with another
-    temple will get day2_morning rather than day1_afternoon.
-    """
     slot_order = SLOT_FALLBACK_ORDER.get(pref_slot, SLOT_FALLBACK_ORDER["morning"])
     trial: List[Tuple[int, str]] = []
-    seen: set = set()
 
-    for slot_name in slot_order:
-        for day in days:
-            for sid in day_slots[day]:
-                if slot_name in sid and sid not in seen:
-                    trial.append((day, sid))
-                    seen.add(sid)
+    for day in days:
+        # Build slot_id lookup for this day keyed by slot_name
+        day_slot_map: Dict[str, str] = {}
+        for sid in day_slots[day]:
+            for sname in SLOT_FALLBACK_ORDER:
+                if sname in sid:
+                    day_slot_map[sname] = sid
+                    break
+
+        # Add slots in fallback order for THIS day before moving on
+        for slot_name in slot_order:
+            sid = day_slot_map.get(slot_name)
+            if sid:
+                trial.append((day, sid))
+
     return trial
 
 
@@ -384,18 +365,16 @@ def schedule_candidates(
     day_dates: Optional[Dict[int, date]] = None,
 ) -> Tuple[list, list]:
     """
-    Greedy scheduler with smart cross-day slot ordering.
+    Greedy scheduler: same-day closest-slot fallback, then next day.
 
-    Trial order per candidate (built by _build_trial_order):
-      • Preferred slot on ALL days first  (e.g. morning day1, morning day2, …)
-      • Then next-closest slot on ALL days (e.g. afternoon day1, afternoon day2, …)
-      • … continuing through SLOT_FALLBACK_ORDER until placed or exhausted
+    Trial order per candidate:
+      day1: preferred → next closest → … all slots on day1
+      day2: preferred → next closest → … all slots on day2
+      …
 
-    This ensures:
-      • Two morning-preferred temples never push each other into unscheduled —
-        one gets morning day1, the other gets morning day2 (or afternoon day1).
-      • must-visit (priority 4–5) candidates always exhaust every possible slot
-        before being marked unscheduled.
+    Two morning-preferred candidates:
+      Candidate A (p=5): day1_morning ✔️
+      Candidate B (p=5): day1_morning (full) → day1_afternoon ✔️  (same day!)
     """
     sorted_cands = sorted(candidates, key=lambda c: -int(c.get("priority", 3)))
 
@@ -417,7 +396,7 @@ def schedule_candidates(
         closed_on     = cand.get("closed_on") or []
         priority      = int(cand.get("priority", 3))
 
-        # ─ Build cross-day, proximity-ordered trial list ─
+        # ─ same-day-first, closest-slot-type trial order ─
         trial_order = _build_trial_order(pref_slot, days, day_slots)
 
         for day, slot_id in trial_order:
@@ -447,31 +426,26 @@ def schedule_candidates(
             actual_t       = _actual_travel(slot, travel_mins)
 
             stop = {
-                # ─ scheduling metadata ─
-                "day":                    day,
-                "slot_id":                slot_id,
-                "slot_name":              slot["slot_name"],
-                "start_time":             start_t,
-                "end_time":               end_t,
-                "travel_mins_from_prev":  actual_t,
-                # ─ place identity ─
-                "place_name":             cand.get("place_name", "Unknown"),
-                "category":               cand.get("category"),
-                "priority":               priority,
-                "why_must_visit":         cand.get("why_must_visit"),
-                "is_alternate":           bool(cand.get("is_alternate", False)),
-                # ─ from enrich (accurate) ─
-                "opening_hours":          oh_str,
-                "closed_on":              closed_on or None,
-                "duration_hrs":           duration_hrs,
-                "entry_fee":              cand.get("entry_fee"),
-                "entry_fee_foreign":      cand.get("entry_fee_foreign"),
-                "tip":                    cand.get("tip"),
-                "nearby_food":            cand.get("nearby_food"),
-                # ─ from geocode ─
-                "lat":                    cand_lat,
-                "lon":                    cand_lon,
-                # ─ scheduler flag ─
+                "day":                      day,
+                "slot_id":                  slot_id,
+                "slot_name":                slot["slot_name"],
+                "start_time":               start_t,
+                "end_time":                 end_t,
+                "travel_mins_from_prev":    actual_t,
+                "place_name":               cand.get("place_name", "Unknown"),
+                "category":                 cand.get("category"),
+                "priority":                 priority,
+                "why_must_visit":           cand.get("why_must_visit"),
+                "is_alternate":             bool(cand.get("is_alternate", False)),
+                "opening_hours":            oh_str,
+                "closed_on":                closed_on or None,
+                "duration_hrs":             duration_hrs,
+                "entry_fee":                cand.get("entry_fee"),
+                "entry_fee_foreign":        cand.get("entry_fee_foreign"),
+                "tip":                      cand.get("tip"),
+                "nearby_food":              cand.get("nearby_food"),
+                "lat":                      cand_lat,
+                "lon":                      cand_lon,
                 "opening_hours_unverified": open_ok is None,
             }
 
@@ -487,7 +461,10 @@ def schedule_candidates(
             in_pref = slot["slot_name"] == pref_slot
             flag    = "\u2705" if open_ok else "\u26a0\ufe0f"
             suffix  = "" if in_pref else f" (fallback from {pref_slot})"
-            logger.debug(f"[sched] {flag} '{cand.get('place_name')}' (p={priority}) → {slot_id} @ {start_t}{suffix}")
+            logger.debug(
+                f"[sched] {flag} '{cand.get('place_name')}' "
+                f"(p={priority}) → {slot_id} @ {start_t}{suffix}"
+            )
             break
 
         if not placed:
