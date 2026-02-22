@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException
 from models.schemas import (
@@ -12,7 +13,7 @@ from services.llm_service import (
     suggest_alternates_llm,
     enrich_place_with_perplexity,
 )
-from services.places_service import geocode_city
+from services.places_service import geocode_city, geocode_place
 from services.scheduler_service import build_day_slots, schedule_candidates
 from services.weather_service import get_weather_forecast
 from services.firebase_service import (
@@ -24,10 +25,13 @@ logger = logging.getLogger(__name__)
 router  = APIRouter()
 
 # Enrich only the top N candidates (by priority) to stay within Groq rate limits.
-# Lower-priority candidates that likely won’t be scheduled are skipped.
 MAX_ENRICH = 15
 
-# Map enrich’s best_time_to_visit string → scheduler slot name
+# Maximum distance (km) a place may be from the destination city centre.
+# Candidates that geocode further away are discarded as wrong-city matches.
+MAX_PLACE_DISTANCE_KM = 60
+
+# Map enrich's best_time_to_visit string → scheduler slot name
 _BEST_TIME_TO_SLOT: dict = {
     "morning":        "morning",
     "early morning":  "morning",
@@ -50,35 +54,39 @@ _BEST_TIME_TO_SLOT: dict = {
 }
 
 
+# ─────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1))
+        * math.cos(math.radians(lat2))
+        * math.sin(dlon / 2) ** 2
+    )
+    return R * 2 * math.asin(math.sqrt(a))
+
+
 def _merge_enrich_data(candidate: dict, enrich_data: dict) -> dict:
     """
     Merge Groq enrich response into a candidate dict.
-    Enrich values override the LLM’s initial guesses because they come
+    Enrich values override the LLM's initial guesses because they come
     from a focused, per-place prompt — more accurate for scheduling.
-
-    Mapping:
-      opening_hours           → opening_hours   (used by opening-hours check)
-      closed_on               → closed_on        (used by opening-hours check)
-      avg_visit_duration_hrs  → duration_hrs     (used by fits-in-slot check)
-      best_time_to_visit      → best_slot        (slot preference for placement)
-      entry_fee_indian        → entry_fee        (INR, shown in UI)
-      entry_fee_foreign       → entry_fee_foreign(shown in UI)
-      local_tip               → tip
-      nearby_food             → nearby_food      (shown in UI below stop card)
     """
     c = dict(candidate)
 
     if enrich_data.get("opening_hours"):
         c["opening_hours"] = enrich_data["opening_hours"]
 
-    # closed_on may be an empty list — still overrides LLM guess
     if enrich_data.get("closed_on") is not None:
         c["closed_on"] = enrich_data["closed_on"]
 
     if enrich_data.get("avg_visit_duration_hrs"):
         c["duration_hrs"] = float(enrich_data["avg_visit_duration_hrs"])
 
-    # Map best_time_to_visit → slot name (exact, then substring)
     if enrich_data.get("best_time_to_visit"):
         btt  = enrich_data["best_time_to_visit"].lower().strip()
         slot = _BEST_TIME_TO_SLOT.get(btt) or next(
@@ -105,10 +113,8 @@ def _merge_enrich_data(candidate: dict, enrich_data: dict) -> dict:
 async def _enrich_all_candidates(candidates: list, destination: str) -> list:
     """
     Enrich candidates using per-place Groq calls (concurrent, semaphore-limited).
-    Only enriches the top MAX_ENRICH by priority — rest are kept as-is.
-
-    Concurrency: 5 simultaneous calls (safe within Groq’s 30 req/min free tier).
-    Failures are silently swallowed — original candidate is returned unchanged.
+    Only enriches the top MAX_ENRICH by priority.
+    destination is passed into each enrich call to ground Groq to the right city.
     """
     sem = asyncio.Semaphore(5)
 
@@ -116,14 +122,13 @@ async def _enrich_all_candidates(candidates: list, destination: str) -> list:
         async with sem:
             try:
                 data = await enrich_place_with_perplexity(
-                    c.get("place_name", ""), destination
+                    c.get("place_name", ""), destination   # ← always pass destination
                 )
                 return _merge_enrich_data(c, data) if data else c
             except Exception as e:
                 logger.warning(f"[enrich] skip '{c.get('place_name')}': {e}")
                 return c
 
-    # Sort by priority so we enrich the most important candidates first
     sorted_cands = sorted(candidates, key=lambda x: -int(x.get("priority", 3)))
     to_enrich    = sorted_cands[:MAX_ENRICH]
     rest         = sorted_cands[MAX_ENRICH:]
@@ -142,38 +147,84 @@ def _compute_day_dates(travel_dates: str, days: int) -> dict:
         return {}
 
 
-async def _geocode_candidates(candidates: list, destination: str) -> list:
+async def _geocode_candidates(
+    candidates: list,
+    destination: str,
+    city_lat: float,
+    city_lon: float,
+) -> list:
     """
-    Resolve lat/lon for each candidate missing coordinates (Geoapify).
-    Failures are silently skipped — scheduler uses a default travel estimate.
+    Resolve lat/lon for every candidate via geocode_place() (city-anchored).
+    After geocoding, drop any place whose resolved coords are more than
+    MAX_PLACE_DISTANCE_KM from the destination city centre — this is the
+    hard guard against Canada/Australia/wrong-city results slipping through.
+
+    Places that fail geocoding (no coords returned) are KEPT in the list so
+    the scheduler can still place them using the default travel estimate; they
+    are just flagged with lat=None/lon=None.
     """
-    out = []
+    out      = []
+    dropped  = 0
+
     for raw in candidates:
         c = dict(raw) if isinstance(raw, dict) else raw.model_dump()
-        if not c.get("lat") or not c.get("lon"):
-            try:
-                coords = await geocode_city(f"{c.get('place_name', '')}, {destination}")
-                if coords:
-                    c["lat"] = coords["lat"]
-                    c["lon"] = coords["lon"]
-            except Exception as ge:
-                logger.debug(f"Geocode skip '{c.get('place_name')}': {ge}")
+        name = c.get("place_name", "?")
+
+        # Always re-geocode using the anchored helper (even if LLM provided coords,
+        # those may be wrong-city guesses from the model).
+        try:
+            coords = await geocode_place(
+                place_name=name,
+                city=destination,
+            )
+        except Exception as ge:
+            logger.debug(f"[geocode] skip '{name}': {ge}")
+            coords = None
+
+        if coords:
+            lat, lon = coords["lat"], coords["lon"]
+            dist = _haversine_km(city_lat, city_lon, lat, lon)
+
+            if dist > MAX_PLACE_DISTANCE_KM:
+                # geocode_place already does a 100 km check internally,
+                # but we apply our stricter 60 km policy here.
+                logger.warning(
+                    f"[geocode] DROPPING '{name}': geocoded {dist:.0f} km from "
+                    f"{destination} — likely wrong-city match"
+                )
+                dropped += 1
+                continue   # skip this candidate entirely
+
+            c["lat"] = lat
+            c["lon"] = lon
+            logger.debug(f"[geocode] '{name}' → ({lat:.5f}, {lon:.5f})  [{dist:.1f} km]")
+        else:
+            # No coords found: keep with None so scheduler uses default travel time
+            c["lat"] = None
+            c["lon"] = None
+            logger.debug(f"[geocode] '{name}': no result, coords=None")
+
         out.append(c)
+
+    if dropped:
+        logger.warning(
+            f"[geocode] {dropped} candidate(s) dropped (>{MAX_PLACE_DISTANCE_KM} km from {destination})"
+        )
     return out
 
 
-# ───────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # POST /api/itinerary/generate
 #
 # 6-stage pipeline:
 #   S1  — Groq: top must-visit candidates (no meals)
-#   S2  — Geocode: lat/lon via Geoapify
-#   S2.5— Enrich: opening hrs, real duration, fees, slot ← NEW
+#   S2  — Geocode: city-anchored lat/lon + distance filter (drops wrong-city results)
+#   S2.5— Enrich: opening hrs, real duration, fees, slot (city-anchored)
 #   S3  — Build day slots
 #   S4  — Schedule (opening-hours enforced)
-#   S5  — Conflict resolver (Groq alternates)
+#   S5  — Conflict resolver (Groq alternates, geocoded + filtered)
 #   S6  — Weather warnings
-# ───────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 @router.post("/generate", response_model=ItineraryResponse)
 async def generate_itinerary(req: TripRequest):
     try:
@@ -182,15 +233,34 @@ async def generate_itinerary(req: TripRequest):
             f"{req.mood.value} | dates={req.travel_dates}"
         )
 
-        # ─ S1: Groq candidates (NO meals) ─
+        # ─ Resolve city centre coords once (used for distance filter in every geocode step) ─
+        city_coords = await geocode_city(req.destination)
+        if not city_coords:
+            logger.warning(f"[gen] Could not geocode city '{req.destination}' — distance filter disabled")
+            city_lat, city_lon = None, None
+        else:
+            city_lat = city_coords["lat"]
+            city_lon = city_coords["lon"]
+            logger.info(f"[gen] City centre: ({city_lat:.4f}, {city_lon:.4f})")
+
+        # ─ S1: Groq candidates ─
         raw_candidates = await generate_place_candidates_llm(req)
         logger.info(f"[gen] S1: {len(raw_candidates)} candidates")
 
-        # ─ S2: Geocode (lat/lon) ─
-        candidates = await _geocode_candidates(raw_candidates, req.destination)
-        logger.info(f"[gen] S2: geocoded {len(candidates)} candidates")
+        # ─ S2: Geocode — city-anchored + distance filter ─
+        if city_lat is not None:
+            candidates = await _geocode_candidates(
+                raw_candidates, req.destination, city_lat, city_lon
+            )
+        else:
+            # Fallback: old behaviour (no distance filter) if city geocode failed
+            candidates = []
+            for raw in raw_candidates:
+                c = dict(raw) if isinstance(raw, dict) else raw.model_dump()
+                candidates.append(c)
+        logger.info(f"[gen] S2: {len(candidates)} candidates after geocode+filter")
 
-        # ─ S2.5: Enrich (opening hours, real duration, fees, best_slot) ─
+        # ─ S2.5: Enrich — city-anchored ─
         candidates = await _enrich_all_candidates(candidates, req.destination)
         logger.info(f"[gen] S2.5: enriched {len(candidates)} candidates")
 
@@ -202,7 +272,7 @@ async def generate_itinerary(req: TripRequest):
             f"day_dates={'set' if day_dates else 'not set (weekday checks skipped)'}"
         )
 
-        # ─ S4: Schedule (with opening-hours enforcement) ─
+        # ─ S4: Schedule ─
         scheduled, unscheduled = schedule_candidates(
             candidates, slots,
             avoid_crowded=req.avoid_crowded,
@@ -228,8 +298,14 @@ async def generate_itinerary(req: TripRequest):
                     still_unscheduled.append(failed)
                     continue
 
-                # geocode + enrich + tag alternates before scheduling
-                enriched_alts = await _geocode_candidates(alts, req.destination)
+                # geocode + distance-filter + enrich alternates the same way as main candidates
+                if city_lat is not None:
+                    enriched_alts = await _geocode_candidates(
+                        alts, req.destination, city_lat, city_lon
+                    )
+                else:
+                    enriched_alts = [dict(a) if isinstance(a, dict) else a.model_dump() for a in alts]
+
                 enriched_alts = await _enrich_all_candidates(enriched_alts, req.destination)
                 for a in enriched_alts:
                     a["is_alternate"] = True
@@ -315,9 +391,9 @@ async def generate_itinerary(req: TripRequest):
         raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
 
 
-# ───────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # POST /api/itinerary/enrich
-# ───────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 @router.post("/enrich", response_model=PlaceEnrichResponse)
 async def enrich_place(req: PlaceEnrichRequest):
     try:

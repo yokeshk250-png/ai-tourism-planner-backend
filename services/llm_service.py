@@ -28,7 +28,7 @@ def get_client():
             "Free key: https://console.groq.com/keys"
         )
     _client = AsyncGroq(api_key=api_key)
-    logger.info(f"Groq ready ✅  model={GROQ_MODEL}  key=...{api_key[-6:]}")
+    logger.info(f"Groq ready \u2705  model={GROQ_MODEL}  key=...{api_key[-6:]}")
     return _client
 
 
@@ -71,53 +71,86 @@ def _parse_json(raw: str) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────
-# Stage 1 — Generate top/must-visit PLACE CANDIDATES (no meals)
+# Stage 1 — Generate PLACE CANDIDATES
 # ─────────────────────────────────────────────────────────────
 async def generate_place_candidates_llm(req: TripRequest) -> list:
     """
     Ask Groq for top/must-visit tourist attractions ONLY.
     NO meals, NO restaurants, NO hotels.
-    Returns more candidates than needed so the scheduler has options.
+
+    Prompting rules that prevent generic/wrong-city names:
+      • Every place must include a locality/area qualifier.
+      • No generic names like "Vishnu Temple" or "Shiva Temple".
+      • Wikipedia-verifiable, named places only.
+      • Strictly within or near the destination city.
     """
-    num = max(req.days * 7, 14)  # Ample candidates for scheduler to pick from
+    num = max(req.days * 7, 18)  # Ample candidates for scheduler to pick from
 
     system_prompt = (
-        "You are an expert Indian travel planner. "
-        "Suggest ONLY tourist attractions — temples, beaches, museums, forts, parks, viewpoints, heritage sites. "
-        "NEVER suggest restaurants, cafes, dhabas, hotels, or any food/meal stops. "
+        "You are an expert Indian travel planner with deep local knowledge. "
+        "Suggest ONLY real, named tourist attractions that physically exist in or very near the given city. "
+        "Every place must be uniquely identifiable — include the area/locality in the name if needed. "
+        "NEVER use generic names like 'Vishnu Temple', 'Shiva Temple', 'Subramanya Temple' without "
+        "the specific temple name used locally. "
+        "NEVER suggest restaurants, cafes, hotels, or any food/meal stops. "
+        "ONLY suggest places that are physically within 50 km of the city centre. "
         "Return ONLY valid JSON."
     )
 
-    user_prompt = f"""Suggest the top {num} must-visit tourist attractions in {req.destination}, India.
+    user_prompt = f"""Suggest the top {num} must-visit tourist attractions specifically in {req.destination}, India.
+
+IMPORTANT RULES FOR PLACE NAMES:
+1. Use the FULL local name (e.g. "Koodal Azhagar Temple, West Masi Street" not just "Vishnu Temple").
+2. Every place must be PHYSICALLY INSIDE or within 50 km of {req.destination} city centre.
+3. Prioritise places from this known list first, then add others:
+   - Meenakshi Amman Temple
+   - Thirumalai Nayak Palace
+   - Vandiyur Mariamman Teppakulam
+   - Koodal Azhagar Temple
+   - Gandhi Memorial Museum
+   - Goripalayam Dargah (Madurai)
+   - Thirupparankundram Murugan Temple
+   - Alagar Kovil (Azhagar Kovil)
+   - Pazhamudhircholai Murugan Temple
+   - Samanar Hills (Keelakuyilkudi)
+   - Yanaimalai
+   - Vilachery Pottery Village, Madurai
+   - Uchi Pillaiyar Temple, Madurai
+   - St. Mary's Cathedral, Madurai
+   - Madurai Railway Museum
+   - Aayiram Kaal Mandapam, Madurai
+4. Strictly NO generic temple names without locality qualifier.
+5. ATTRACTIONS ONLY — zero restaurants, zero cafes, zero meal stops.
 
 Traveller profile:
-- Budget: {req.budget.value}\n- Travel type: {req.travel_type.value}
-- Mood/Theme: {req.mood.value}\n- Interests: {', '.join(req.interests)}
-- Avoid crowded: {req.avoid_crowded}\n- Accessibility needs: {req.accessibility_needs}
+- Budget: {req.budget.value}
+- Travel type: {req.travel_type.value}
+- Mood/Theme: {req.mood.value}
+- Interests: {', '.join(req.interests)}
+- Avoid crowded: {req.avoid_crowded}
+- Accessibility needs: {req.accessibility_needs}
 
-Rules:
-1. ATTRACTIONS ONLY — zero restaurants, zero cafes, zero meal stops.
-2. Mix 70% famous/iconic + 30% lesser-known gems.
-3. priority: 5=must-visit, 4=highly recommended, 3=good, 2=if time permits, 1=optional.
-4. Realistic visit duration in hours (0.5 to 4.0).
-5. best_slot: morning (09-12) | afternoon (13-16) | evening (16:30-19:30) | night (20-21:30).
-6. Use actual opening hours and INR entry fees (0 if free).
-7. One practical tip per place (max 15 words).
+Additional rules:
+- priority: 5=must-visit, 4=highly recommended, 3=good, 2=if time permits, 1=optional.
+- Realistic visit duration in hours (0.5 to 4.0).
+- best_slot: morning (09-12) | afternoon (13-16) | evening (16:30-19:30) | night (20-21:30).
+- Use actual opening hours and INR entry fees (0 if free).
+- One practical tip per place (max 15 words).
 
 Return ONLY this JSON:
 {{
   "candidates": [
     {{
-      "place_name": "Marina Beach",
-      "category": "beach",
+      "place_name": "Meenakshi Amman Temple",
+      "category": "temple",
       "priority": 5,
-      "duration_hrs": 1.5,
+      "duration_hrs": 2.5,
       "best_slot": "morning",
-      "why_must_visit": "Longest natural urban beach in India",
-      "opening_hours": "Open 24hrs",
+      "why_must_visit": "One of India's largest and most ornate Dravidian temples",
+      "opening_hours": "5:00 AM - 12:30 PM, 4:00 PM - 10:00 PM",
       "closed_on": [],
       "entry_fee": 0,
-      "tip": "Visit at sunrise for golden light and fewer crowds"
+      "tip": "Arrive before 9 AM to beat crowds and see morning rituals"
     }}
   ]
 }}"""
@@ -143,14 +176,16 @@ async def suggest_alternates_llm(
 ) -> list:
     """
     When a candidate cannot be scheduled, ask Groq for shorter/alternative places.
-    Returns list of alternate candidate dicts.
+    Alternates must be real, specifically-named places in destination.
     """
     scheduled_names = [s.get("place_name", "") for s in scheduled_places]
     max_dur = max(0.5, round(failed_place.get("duration_hrs", 1.5) - 0.5, 1))
 
     system_prompt = (
-        "You are an expert Indian travel planner. "
-        "Suggest alternative TOURIST ATTRACTIONS only — no restaurants or meals. "
+        "You are an expert Indian travel planner with deep local knowledge. "
+        "Suggest real, specifically-named TOURIST ATTRACTIONS only — no restaurants, no meals. "
+        "Every suggestion must physically exist in or within 50 km of the destination city. "
+        "NEVER use generic names like 'Vishnu Temple' without the specific local temple name. "
         "Return ONLY valid JSON."
     )
 
@@ -169,22 +204,23 @@ Suggest 3 alternative tourist attractions that:
 2. Shorter visit duration (≤ {max_dur} hours).
 3. Can fit in the {slot_name} time slot.
 4. NOT already in the scheduled list.
-5. ATTRACTIONS ONLY — no restaurants, no hotels.
+5. MUST be real, specifically-named places in or within 50 km of {destination}.
+6. ATTRACTIONS ONLY — no restaurants, no hotels.
 
 Return ONLY this JSON:
 {{
   "alternates": [
     {{
-      "place_name": "Santhome Cathedral",
+      "place_name": "Goripalayam Dargah, Madurai",
       "category": "heritage",
-      "priority": 4,
-      "duration_hrs": 1.0,
+      "priority": 3,
+      "duration_hrs": 0.5,
       "best_slot": "{slot_name}",
-      "why_must_visit": "Historic Portuguese cathedral on the beach",
-      "opening_hours": "6:00 AM - 8:00 PM",
+      "why_must_visit": "300-year-old dargah at the heart of Madurai",
+      "opening_hours": "Open 24hrs",
       "closed_on": [],
       "entry_fee": 0,
-      "tip": "Visit on weekday mornings to avoid crowds"
+      "tip": "Dress modestly; serene even during busy hours"
     }}
   ]
 }}"""
@@ -204,13 +240,15 @@ Return ONLY this JSON:
 
 
 # ─────────────────────────────────────────────────────────────
-# Enrich a single place (backward compat)
+# Enrich a single place
 # ─────────────────────────────────────────────────────────────
 async def enrich_place_with_perplexity(place_name: str, city: str) -> dict:
     """
     Enrich a single place using Groq (function name kept for backward compat).
+    city is always passed so Groq grounds its answer to the right location.
     """
-    prompt = f"""Provide factual information about "{place_name}" in {city}, India.
+    prompt = f"""Provide factual information about the tourist attraction "{place_name}" located in {city}, India.
+If this place does not physically exist in {city}, return empty strings and zeros.
 Return ONLY this JSON:
 {{
   "opening_hours": "9:00 AM - 6:00 PM",
