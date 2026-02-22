@@ -44,26 +44,6 @@ TRAVEL_SPEED_KMPH   = 20
 TRAVEL_BUFFER_MINS  = 10
 DEFAULT_TRAVEL_MINS = 15
 
-# ─────────────────────────────────────────────────────────────
-# Slot fallback order (closest slot types to try when preferred is full)
-#
-# Trial order built per candidate:
-#   For each day (day1, day2, …):
-#     1. preferred slot on THIS day
-#     2. next closest slot on THIS day
-#     3. … all slots on this day exhausted → move to next day
-#
-# Example: best_slot="morning", 2-day trip
-#   day1_morning → day1_afternoon → day1_evening → day1_night
-#   → day2_morning → day2_afternoon → day2_evening → day2_night
-# ─────────────────────────────────────────────────────────────
-SLOT_FALLBACK_ORDER: Dict[str, List[str]] = {
-    "morning":   ["morning", "afternoon", "evening", "night"],
-    "afternoon": ["afternoon", "morning", "evening", "night"],
-    "evening":   ["evening", "afternoon", "night", "morning"],
-    "night":     ["night", "evening", "afternoon", "morning"],
-}
-
 
 # ─────────────────────────────────────────────────────────────
 # Opening hours parser
@@ -119,6 +99,11 @@ def _parse_time_str(s: str) -> Optional[int]:
 
 
 def _parse_daily_range(opening_hours: str) -> Optional[Tuple[int, int]]:
+    """
+    Extract first and last time token from the string.
+    Handles: '9:00 AM - 6:00 PM', '09:00-18:00',
+             'Tue-Sun 9:00 AM to 6:00 PM', 'Everyday 6 AM - 9 PM'
+    """
     s = opening_hours.strip()
     if re.search(r"(24/7|open\s*24|always\s*open)", s, re.IGNORECASE):
         return (0, 24 * 60)
@@ -202,9 +187,23 @@ def is_open_for_slot(
     duration_mins: int,
     slot_date: Optional[date] = None,
 ) -> Tuple[Optional[bool], str]:
+    """
+    Check whether a place can be visited during a slot.
+
+    Valid when:
+        visit_start = max(slot_start, place_open)
+        visit_end   = visit_start + duration_mins
+        visit_end  <= min(slot_end,  place_close)
+
+    Returns:
+        (True,  "")      — confirmed open and fits
+        (False, reason)  — confirmed closed / won't fit  → skip slot
+        (None,  reason)  — unknown / unparseable          → schedule with warning
+    """
     s_mins = _hm_to_mins(slot_start)
     e_mins = _hm_to_mins(slot_end)
 
+    # 1. closed_on list
     if closed_on and slot_date:
         wd = slot_date.weekday()
         for day_str in closed_on:
@@ -219,6 +218,7 @@ def is_open_for_slot(
     if low in ("24/7", "open24hrs", "open24hours", "open24h", "alwaysopen", "open24"):
         return (True, "")
 
+    # 2. Simple daily range
     daily = _parse_daily_range(opening_hours)
     if daily:
         o, c = daily
@@ -232,6 +232,7 @@ def is_open_for_slot(
             f"slot {slot_start}-{slot_end}, need {duration_mins}min"
         )
 
+    # 3. OSM weekday schedule
     osm = _parse_osm_schedule(opening_hours)
     if osm is not None:
         if slot_date is None:
@@ -275,45 +276,6 @@ def build_day_slots(days: int) -> List[Dict]:
                 "last_lon":       None,
             })
     return slots
-
-
-# ─────────────────────────────────────────────────────────────
-# Trial-order builder
-#
-# Builds a flat (day, slot_id) list:
-#   For EACH day in order:
-#     try preferred slot first, then next-closest slot,
-#     then next, then last  (all on the same day)
-#   Only when all slots on this day are exhausted, move to the next day.
-#
-# Example: best_slot="morning", 2-day trip
-#   [(1, day1_morning), (1, day1_afternoon), (1, day1_evening), (1, day1_night),
-#    (2, day2_morning), (2, day2_afternoon), (2, day2_evening), (2, day2_night)]
-# ─────────────────────────────────────────────────────────────
-def _build_trial_order(
-    pref_slot: str,
-    days: List[int],
-    day_slots: Dict[int, List[str]],
-) -> List[Tuple[int, str]]:
-    slot_order = SLOT_FALLBACK_ORDER.get(pref_slot, SLOT_FALLBACK_ORDER["morning"])
-    trial: List[Tuple[int, str]] = []
-
-    for day in days:
-        # Build slot_id lookup for this day keyed by slot_name
-        day_slot_map: Dict[str, str] = {}
-        for sid in day_slots[day]:
-            for sname in SLOT_FALLBACK_ORDER:
-                if sname in sid:
-                    day_slot_map[sname] = sid
-                    break
-
-        # Add slots in fallback order for THIS day before moving on
-        for slot_name in slot_order:
-            sid = day_slot_map.get(slot_name)
-            if sid:
-                trial.append((day, sid))
-
-    return trial
 
 
 # ─────────────────────────────────────────────────────────────
@@ -365,16 +327,16 @@ def schedule_candidates(
     day_dates: Optional[Dict[int, date]] = None,
 ) -> Tuple[list, list]:
     """
-    Greedy scheduler: same-day closest-slot fallback, then next day.
+    Greedy scheduler: places candidates into time slots.
 
-    Trial order per candidate:
-      day1: preferred → next closest → … all slots on day1
-      day2: preferred → next closest → … all slots on day2
-      …
+    By this point each candidate should be pre-enriched so that:
+      - opening_hours / closed_on   come from the enrich call (accurate)
+      - duration_hrs                comes from avg_visit_duration_hrs (accurate)
+      - best_slot                   comes from best_time_to_visit (accurate)
+      - entry_fee / entry_fee_foreign come from enrich fees
+      - nearby_food                 available for UI display
 
-    Two morning-preferred candidates:
-      Candidate A (p=5): day1_morning ✔️
-      Candidate B (p=5): day1_morning (full) → day1_afternoon ✔️  (same day!)
+    These enriched values are all passed through to the scheduled stop dict.
     """
     sorted_cands = sorted(candidates, key=lambda c: -int(c.get("priority", 3)))
 
@@ -394,84 +356,86 @@ def schedule_candidates(
         duration_mins = int(duration_hrs * 60)
         oh_str        = cand.get("opening_hours")
         closed_on     = cand.get("closed_on") or []
-        priority      = int(cand.get("priority", 3))
 
-        # ─ same-day-first, closest-slot-type trial order ─
-        trial_order = _build_trial_order(pref_slot, days, day_slots)
+        for day in days:
+            if placed:
+                break
 
-        for day, slot_id in trial_order:
-            slot        = slot_map[slot_id]
-            slot_date   = day_dates.get(day) if day_dates else None
-            travel_mins = estimate_travel_minutes(
-                slot.get("last_lat"), slot.get("last_lon"), cand_lat, cand_lon
-            )
+            preferred = [sid for sid in day_slots[day] if pref_slot in sid]
+            fallback  = [sid for sid in day_slots[day] if pref_slot not in sid]
 
-            # ─ Opening hours check ─
-            open_ok, open_reason = is_open_for_slot(
-                oh_str, closed_on,
-                slot["start_time"], slot["end_time"],
-                duration_mins, slot_date
-            )
-            if open_ok is False:
-                logger.debug(
-                    f"[sched] skip '{cand.get('place_name')}' in {slot_id}: {open_reason}"
+            for slot_id in (preferred + fallback):
+                slot        = slot_map[slot_id]
+                slot_date   = day_dates.get(day) if day_dates else None
+                travel_mins = estimate_travel_minutes(
+                    slot.get("last_lat"), slot.get("last_lon"), cand_lat, cand_lon
                 )
-                continue
 
-            # ─ Duration + travel fit check ─
-            if not _fits_in_slot(cand, slot, travel_mins):
-                continue
+                # ─ Opening hours check (uses enriched data) ─
+                open_ok, open_reason = is_open_for_slot(
+                    oh_str, closed_on,
+                    slot["start_time"], slot["end_time"],
+                    duration_mins, slot_date
+                )
+                if open_ok is False:
+                    logger.debug(
+                        f"[sched] skip '{cand.get('place_name')}' in {slot_id}: {open_reason}"
+                    )
+                    continue
 
-            start_t, end_t = _compute_stop_times(slot, travel_mins, duration_hrs)
-            actual_t       = _actual_travel(slot, travel_mins)
+                # ─ Duration + travel fit check ─
+                if not _fits_in_slot(cand, slot, travel_mins):
+                    continue
 
-            stop = {
-                "day":                      day,
-                "slot_id":                  slot_id,
-                "slot_name":                slot["slot_name"],
-                "start_time":               start_t,
-                "end_time":                 end_t,
-                "travel_mins_from_prev":    actual_t,
-                "place_name":               cand.get("place_name", "Unknown"),
-                "category":                 cand.get("category"),
-                "priority":                 priority,
-                "why_must_visit":           cand.get("why_must_visit"),
-                "is_alternate":             bool(cand.get("is_alternate", False)),
-                "opening_hours":            oh_str,
-                "closed_on":                closed_on or None,
-                "duration_hrs":             duration_hrs,
-                "entry_fee":                cand.get("entry_fee"),
-                "entry_fee_foreign":        cand.get("entry_fee_foreign"),
-                "tip":                      cand.get("tip"),
-                "nearby_food":              cand.get("nearby_food"),
-                "lat":                      cand_lat,
-                "lon":                      cand_lon,
-                "opening_hours_unverified": open_ok is None,
-            }
+                start_t, end_t = _compute_stop_times(slot, travel_mins, duration_hrs)
+                actual_t       = _actual_travel(slot, travel_mins)
 
-            slot["remaining_mins"] -= (actual_t + duration_mins)
-            slot["stops"].append(stop)
-            if cand_lat and cand_lon:
-                slot["last_lat"] = cand_lat
-                slot["last_lon"] = cand_lon
+                stop = {
+                    # ─ scheduling metadata ─
+                    "day":                    day,
+                    "slot_id":                slot_id,
+                    "slot_name":              slot["slot_name"],
+                    "start_time":             start_t,
+                    "end_time":               end_t,
+                    "travel_mins_from_prev":  actual_t,
+                    # ─ place identity ─
+                    "place_name":             cand.get("place_name", "Unknown"),
+                    "category":               cand.get("category"),
+                    "priority":               int(cand.get("priority", 3)),
+                    "why_must_visit":         cand.get("why_must_visit"),
+                    "is_alternate":           bool(cand.get("is_alternate", False)),
+                    # ─ from enrich (accurate) ─
+                    "opening_hours":          oh_str,
+                    "closed_on":              closed_on or None,
+                    "duration_hrs":           duration_hrs,
+                    "entry_fee":              cand.get("entry_fee"),
+                    "entry_fee_foreign":      cand.get("entry_fee_foreign"),
+                    "tip":                    cand.get("tip"),
+                    "nearby_food":            cand.get("nearby_food"),
+                    # ─ from geocode ─
+                    "lat":                    cand_lat,
+                    "lon":                    cand_lon,
+                    # ─ scheduler flag ─
+                    "opening_hours_unverified": open_ok is None,
+                }
 
-            scheduled.append(stop)
-            placed = True
+                slot["remaining_mins"] -= (actual_t + duration_mins)
+                slot["stops"].append(stop)
+                if cand_lat and cand_lon:
+                    slot["last_lat"] = cand_lat
+                    slot["last_lon"] = cand_lon
 
-            in_pref = slot["slot_name"] == pref_slot
-            flag    = "\u2705" if open_ok else "\u26a0\ufe0f"
-            suffix  = "" if in_pref else f" (fallback from {pref_slot})"
-            logger.debug(
-                f"[sched] {flag} '{cand.get('place_name')}' "
-                f"(p={priority}) → {slot_id} @ {start_t}{suffix}"
-            )
-            break
+                scheduled.append(stop)
+                placed = True
+                flag = "\u2705" if open_ok else "\u26a0\ufe0f"
+                logger.debug(f"[sched] {flag} '{cand.get('place_name')}' → {slot_id} @ {start_t}")
+                break
+
+            if placed:
+                break
 
         if not placed:
-            logger.info(
-                f"[sched] unscheduled: '{cand.get('place_name')}' "
-                f"(p={priority}, dur={duration_hrs}h) — all {len(trial_order)} slots exhausted"
-            )
+            logger.info(f"[sched] unscheduled: '{cand.get('place_name')}' (dur={duration_hrs}h)")
             unscheduled.append(cand)
 
     logger.info(f"[sched] done: {len(scheduled)} placed, {len(unscheduled)} unscheduled")
