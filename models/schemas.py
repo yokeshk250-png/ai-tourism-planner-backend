@@ -1,11 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 from enum import Enum
 from datetime import datetime
 
 
-# ─────────────────────────────────────────
-# Enums
 # ─────────────────────────────────────────
 class BudgetLevel(str, Enum):
     low = "low"
@@ -40,8 +38,6 @@ class PlaceCategory(str, Enum):
 
 
 # ─────────────────────────────────────────
-# Trip Request
-# ─────────────────────────────────────────
 class TripRequest(BaseModel):
     destination: str = Field(..., example="Chennai")
     days: int = Field(..., ge=1, le=14, example=2)
@@ -57,8 +53,6 @@ class TripRequest(BaseModel):
     accessibility_needs: bool = Field(default=False)
 
 
-# ─────────────────────────────────────────
-# Place Stop (single itinerary item)
 # ─────────────────────────────────────────
 class PlaceStop(BaseModel):
     day: int
@@ -78,13 +72,16 @@ class PlaceStop(BaseModel):
     photo_url: Optional[str] = None
     nearby_food: Optional[str] = None
     warning: Optional[str] = None
-    source: Optional[str] = None   # perplexity | foursquare | geoapify
+    source: Optional[str] = None
 
 
 # ─────────────────────────────────────────
-# Itinerary Response
+# ItineraryMeta — model_config suppresses Pydantic warning
+# for field named 'model_used' (conflicts with 'model_' namespace)
 # ─────────────────────────────────────────
 class ItineraryMeta(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     destination: str
     days: int
     travel_type: str
@@ -100,8 +97,6 @@ class ItineraryResponse(BaseModel):
     weather_warnings: Optional[List[str]] = None
 
 
-# ─────────────────────────────────────────
-# Place Enrichment
 # ─────────────────────────────────────────
 class PlaceEnrichRequest(BaseModel):
     place_name: str = Field(..., example="Kapaleeshwarar Temple")
@@ -121,8 +116,6 @@ class PlaceEnrichResponse(BaseModel):
 
 
 # ─────────────────────────────────────────
-# User Rating
-# ─────────────────────────────────────────
 class UserRating(BaseModel):
     user_id: str
     place_id: str
@@ -131,8 +124,6 @@ class UserRating(BaseModel):
     review: Optional[str] = None
 
 
-# ─────────────────────────────────────────
-# Place Search Response
 # ─────────────────────────────────────────
 class PlaceResult(BaseModel):
     source: str

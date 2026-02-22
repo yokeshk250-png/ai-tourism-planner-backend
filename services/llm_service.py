@@ -1,55 +1,45 @@
 import json
 import os
+import logging
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, AuthenticationError, APIStatusError
 from models.schemas import TripRequest
 
-load_dotenv()  # Ensure .env is loaded when this module is imported directly
+load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────
-# Lazy Perplexity client — initialized only when first called
-# Avoids OpenAIError at import time if .env not yet loaded
+# Lazy Perplexity client
 # ─────────────────────────────────────────────────────────────
 _client = None
 
 def get_client() -> AsyncOpenAI:
-    """
-    Returns a cached Perplexity AsyncOpenAI client.
-    Raises a clear error if PERPLEXITY_API_KEY is missing.
-    """
     global _client
     if _client is None:
         api_key = os.getenv("PERPLEXITY_API_KEY")
         if not api_key:
             raise EnvironmentError(
-                "PERPLEXITY_API_KEY is not set. "
-                "Add it to your .env file. "
-                "Get your key at: https://www.perplexity.ai/settings/api"
+                "PERPLEXITY_API_KEY is not set.\n"
+                "Fix: Add PERPLEXITY_API_KEY=pplx-xxxx to your .env file.\n"
+                "Get key: https://www.perplexity.ai/settings/api"
             )
+        # Reset cached client if key changes (e.g., during dev)
         _client = AsyncOpenAI(
             api_key=api_key,
             base_url="https://api.perplexity.ai"
         )
+        logger.info(f"Perplexity client initialized (key: ...{api_key[-6:]})")
     return _client
 
-# Available Perplexity models:
-# sonar-pro           → Best quality + real-time web search grounding
-# sonar               → Fast, cost-effective
-# sonar-reasoning     → Deep reasoning (like o1)
-# sonar-reasoning-pro → Best reasoning quality
+
 PERPLEXITY_MODEL = os.getenv("PERPLEXITY_MODEL", "sonar-pro")
 
 
 # ─────────────────────────────────────────────────────────────
-# Generate full itinerary using Perplexity sonar-pro
+# Generate itinerary via Perplexity sonar-pro
 # ─────────────────────────────────────────────────────────────
 async def generate_itinerary_llm(req: TripRequest) -> list:
-    """
-    Use Perplexity sonar-pro to generate a structured day-wise itinerary.
-    sonar-pro uses real-time web search grounding — ensures up-to-date
-    place info, opening hours, and entry fees for Indian attractions.
-    Returns a list of PlaceStop dicts.
-    """
     client = get_client()
 
     system_prompt = """
@@ -63,7 +53,7 @@ async def generate_itinerary_llm(req: TripRequest) -> list:
     Create a detailed {req.days}-day travel itinerary for {req.destination}, India.
 
     Traveller Profile:
-    - Budget: {req.budget} (low=budget stays & local food | medium=mid-range | high=luxury)
+    - Budget: {req.budget}
     - Travel type: {req.travel_type}
     - Mood/Theme: {req.mood}
     - Interests: {', '.join(req.interests)}
@@ -77,9 +67,9 @@ async def generate_itinerary_llm(req: TripRequest) -> list:
     3. Include meal stops at breakfast (08:00), lunch (13:00), and dinner (19:30).
     4. Estimate visit duration in hours for each stop.
     5. Respect actual Indian attraction opening/closing hours.
-    6. Include entry fees (in INR, 0 if free).
+    6. Include entry fees in INR (0 if free).
     7. Add a short local tip for each place (max 15 words).
-    8. Prioritize lesser-known gems alongside famous landmarks.
+    8. Mix famous landmarks with lesser-known gems.
 
     Return ONLY this exact JSON structure:
     {{
@@ -97,40 +87,48 @@ async def generate_itinerary_llm(req: TripRequest) -> list:
     }}
     """
 
-    response = await client.chat.completions.create(
-        model=PERPLEXITY_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        temperature=0.2,
-        max_tokens=4000
-    )
+    try:
+        response = await client.chat.completions.create(
+            model=PERPLEXITY_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_prompt}
+            ],
+            temperature=0.2,
+            max_tokens=4000
+        )
+    except AuthenticationError:
+        raise ValueError(
+            "Perplexity API key is invalid or expired (401 Unauthorized).\n"
+            "Fix: Update PERPLEXITY_API_KEY in your .env file.\n"
+            "Get a new key: https://www.perplexity.ai/settings/api"
+        )
+    except APIStatusError as e:
+        raise ValueError(f"Perplexity API error {e.status_code}: {e.message}")
 
     raw = response.choices[0].message.content
+    logger.debug(f"Raw LLM response (first 200 chars): {raw[:200]}")
 
-    # Strip markdown code blocks if Perplexity wraps output
+    # Strip markdown code fences if present
     if "```json" in raw:
         raw = raw.split("```json")[1].split("```")[0].strip()
     elif "```" in raw:
         raw = raw.split("```")[1].split("```")[0].strip()
 
-    data = json.loads(raw)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"LLM returned invalid JSON: {e}\nRaw: {raw[:300]}")
 
-    # Handle {"itinerary": [...]} or direct [...]
     if isinstance(data, dict):
         return list(data.values())[0]
     return data
 
 
 # ─────────────────────────────────────────────────────────────
-# Enrich a single place with real-time info via Perplexity sonar
+# Enrich a single place via Perplexity sonar
 # ─────────────────────────────────────────────────────────────
 async def enrich_place_with_perplexity(place_name: str, city: str) -> dict:
-    """
-    Use Perplexity sonar (fast model) to fetch real-time details for a place.
-    Returns opening hours, entry fees, best visit time, and local tips.
-    """
     client = get_client()
 
     prompt = f"""
@@ -148,12 +146,18 @@ async def enrich_place_with_perplexity(place_name: str, city: str) -> dict:
     }}
     """
 
-    response = await client.chat.completions.create(
-        model="sonar",   # Use faster/cheaper sonar for single-place enrichment
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.1,
-        max_tokens=500
-    )
+    try:
+        response = await client.chat.completions.create(
+            model="sonar",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=500
+        )
+    except AuthenticationError:
+        raise ValueError(
+            "Perplexity API key is invalid (401). "
+            "Update PERPLEXITY_API_KEY in .env"
+        )
 
     raw = response.choices[0].message.content
     try:
