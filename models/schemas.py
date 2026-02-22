@@ -81,7 +81,7 @@ class ItineraryMeta(BaseModel):
     budget: str
     mood: str
     generated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
-    model_used: str = "google/gemini-1.5-flash"
+    model_used: str = "groq/llama-3.3-70b-versatile"
 
 class ItineraryResponse(BaseModel):
     success: bool

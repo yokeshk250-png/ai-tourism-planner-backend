@@ -9,63 +9,74 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────
-# Uses google-genai (new unified SDK) with gemini-2.0-flash
-# pip install google-genai
-# Docs: https://googleapis.github.io/python-genai/
+# Groq Cloud — FREE 14,400 req/day, no credit card
+# Uses official groq-python SDK (async native)
+# Get key: https://console.groq.com/keys
+# Docs:    https://console.groq.com/docs/openai
 # ─────────────────────────────────────────────────────────────
 _client = None
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+
+# Available Groq free-tier models:
+# llama-3.3-70b-versatile  → Best quality, 32K ctx, 14,400 req/day
+# llama3-70b-8192          → Solid quality, 8K ctx
+# llama3-8b-8192           → Fastest, lightest
+# mixtral-8x7b-32768       → Great for structured JSON, 32K ctx
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 
 def get_client():
     """
-    Returns a cached google-genai Client.
-    Raises a clear error if GEMINI_API_KEY is missing.
+    Returns a cached Groq AsyncGroq client.
+    Raises a clear error if GROQ_API_KEY is missing.
     """
     global _client
     if _client is not None:
         return _client
 
     try:
-        from google import genai
+        from groq import AsyncGroq
     except ImportError:
         raise ImportError(
-            "google-genai package not installed.\n"
-            "Fix: pip install google-genai"
+            "groq package not installed.\n"
+            "Fix: pip install groq"
         )
 
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise EnvironmentError(
-            "GEMINI_API_KEY is not set.\n"
-            "Fix: Add GEMINI_API_KEY=AIza... to your .env file.\n"
-            "Get FREE key: https://aistudio.google.com/app/apikey"
+            "GROQ_API_KEY is not set.\n"
+            "Fix: Add GROQ_API_KEY=gsk_... to your .env file.\n"
+            "Get FREE key (no credit card): https://console.groq.com/keys"
         )
 
-    _client = genai.Client(api_key=api_key)
-    logger.info(f"Gemini client ready ✅ model={GEMINI_MODEL} key=...{api_key[-6:]}")
+    _client = AsyncGroq(api_key=api_key)
+    logger.info(f"Groq client ready ✅  model={GROQ_MODEL}  key=...{api_key[-6:]}")
     return _client
 
 
 # ─────────────────────────────────────────────────────────────
-# Generate itinerary — async via google-genai native async API
+# Generate full itinerary via Groq (fully async)
 # ─────────────────────────────────────────────────────────────
 async def generate_itinerary_llm(req: TripRequest) -> list:
     """
-    Generate a day-wise itinerary using Gemini 2.0 Flash.
-    Uses native async API (client.aio.models.generate_content).
-    Forces JSON output via response_mime_type.
+    Generate a day-wise itinerary using Groq llama-3.3-70b-versatile.
+    Forces JSON output via response_format={"type": "json_object"}.
+    Fully async — no thread pool needed.
     """
-    from google.genai import types
-
     client = get_client()
 
-    prompt = f"""
-    You are an expert Indian travel planner. Create a detailed {req.days}-day travel
-    itinerary for {req.destination}, India.
+    system_prompt = (
+        "You are an expert Indian travel planner with deep knowledge of tourist "
+        "destinations, local culture, opening times, and travel logistics across India. "
+        "Always return factual information. "
+        "Return ONLY valid JSON — no markdown, no explanation."
+    )
+
+    user_prompt = f"""
+    Create a detailed {req.days}-day travel itinerary for {req.destination}, India.
 
     Traveller Profile:
-    - Budget: {req.budget} (low=budget | medium=mid-range | high=luxury)
+    - Budget: {req.budget}  (low=budget stays & street food | medium=mid-range | high=luxury)
     - Travel type: {req.travel_type}
     - Mood/Theme: {req.mood}
     - Interests: {', '.join(req.interests)}
@@ -77,7 +88,7 @@ async def generate_itinerary_llm(req: TripRequest) -> list:
     1. Schedule places in logical geographic order to minimize travel time.
     2. Realistic timings: morning 06:00-12:00, afternoon 12:00-17:00, evening 17:00-21:00.
     3. Include meal stops: breakfast (08:00), lunch (13:00), dinner (19:30).
-    4. Estimate visit duration in hours per stop.
+    4. Estimate visit duration in hours for each stop.
     5. Use actual Indian attraction opening/closing hours.
     6. Include entry fees in INR (0 if free).
     7. Add a short practical local tip per place (max 15 words).
@@ -99,37 +110,37 @@ async def generate_itinerary_llm(req: TripRequest) -> list:
     }}
     """
 
-    config = types.GenerateContentConfig(
-        response_mime_type="application/json",
-        temperature=0.2,
-        max_output_tokens=4096,
-    )
-
     try:
-        response = await client.aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=config
+        response = await client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_prompt}
+            ],
+            response_format={"type": "json_object"},  # ← Forces clean JSON output
+            temperature=0.2,
+            max_tokens=4096
         )
     except Exception as e:
         err = str(e)
-        if "API_KEY_INVALID" in err or "API key not valid" in err:
+        if "401" in err or "invalid_api_key" in err.lower():
             raise ValueError(
-                "Gemini API key is invalid.\n"
-                "Fix: Update GEMINI_API_KEY in .env.\n"
-                "Get key: https://aistudio.google.com/app/apikey"
+                "Groq API key is invalid (401).\n"
+                "Fix: Update GROQ_API_KEY in .env.\n"
+                "Get key: https://console.groq.com/keys"
             )
-        if "404" in err or "not found" in err.lower():
+        if "429" in err or "rate_limit" in err.lower():
             raise ValueError(
-                f"Model '{GEMINI_MODEL}' not found.\n"
-                "Fix: Check GEMINI_MODEL in .env. Valid: gemini-2.0-flash | gemini-1.5-flash-latest"
+                "Groq rate limit hit (429).\n"
+                "Free tier: 30 req/min, 14,400 req/day.\n"
+                "Wait a minute and retry."
             )
-        raise ValueError(f"Gemini API error: {err}")
+        raise ValueError(f"Groq API error: {err}")
 
-    raw = response.text
-    logger.debug(f"Gemini raw (first 200): {raw[:200]}")
+    raw = response.choices[0].message.content
+    logger.debug(f"Groq raw (first 200): {raw[:200]}")
 
-    # Strip markdown fences if present
+    # Strip markdown fences (safety fallback)
     if "```json" in raw:
         raw = raw.split("```json")[1].split("```")[0].strip()
     elif "```" in raw:
@@ -138,23 +149,21 @@ async def generate_itinerary_llm(req: TripRequest) -> list:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON from Gemini: {e}\nRaw: {raw[:300]}")
+        raise ValueError(f"Invalid JSON from Groq: {e}\nRaw: {raw[:300]}")
 
     result = data.get("itinerary") if isinstance(data, dict) else data
-    logger.info(f"Generated {len(result)} stops for {req.destination}")
+    logger.info(f"Groq generated {len(result)} stops for {req.destination}")
     return result
 
 
 # ─────────────────────────────────────────────────────────────
-# Enrich a single place via Gemini Flash
+# Enrich a single place via Groq
 # ─────────────────────────────────────────────────────────────
 async def enrich_place_with_perplexity(place_name: str, city: str) -> dict:
     """
-    Enrich a single place with real-time details using Gemini Flash.
-    Function name kept for backward compatibility with existing routes.
+    Fetch real-time details for a specific place using Groq.
+    Function name kept for backward compatibility.
     """
-    from google.genai import types
-
     client = get_client()
 
     prompt = f"""
@@ -172,19 +181,15 @@ async def enrich_place_with_perplexity(place_name: str, city: str) -> dict:
     }}
     """
 
-    config = types.GenerateContentConfig(
-        response_mime_type="application/json",
-        temperature=0.1,
-        max_output_tokens=512,
-    )
-
     try:
-        response = await client.aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=config
+        response = await client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+            max_tokens=512
         )
-        raw = response.text
+        raw = response.choices[0].message.content
         if "```json" in raw:
             raw = raw.split("```json")[1].split("```")[0].strip()
         elif "```" in raw:

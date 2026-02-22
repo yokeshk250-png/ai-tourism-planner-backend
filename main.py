@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────
-# MUST be first — loads .env before any import reads os.getenv()
+# MUST be first — loads .env before any import
 # ─────────────────────────────────────────
 from dotenv import load_dotenv
 load_dotenv()
@@ -23,18 +23,15 @@ APP_ENV = os.getenv("APP_ENV", "development")
 app = FastAPI(
     title="AI Tourism Planner API",
     description="""Backend API for AI-powered tourism itinerary planning.
-    Uses **Gemini 1.5 Flash** for fast itinerary generation,
+    Uses **Groq llama-3.3-70b-versatile** for fast itinerary generation (free tier),
     **Foursquare/Geoapify** for POI data, and **Firebase** for user storage.""",
-    version="2.1.0",
+    version="2.2.0",
     contact={
         "name": "AI Tourism Planner",
         "url": "https://github.com/yokeshk250-png/ai-tourism-planner-backend"
     }
 )
 
-# ─────────────────────────────────────────
-# CORS
-# ─────────────────────────────────────────
 if APP_ENV == "development":
     app.add_middleware(
         CORSMiddleware,
@@ -56,9 +53,6 @@ else:
         allow_headers=["*"],
     )
 
-# ─────────────────────────────────────────
-# Request logging middleware
-# ─────────────────────────────────────────
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start = time.time()
@@ -67,9 +61,6 @@ async def log_requests(request: Request, call_next):
     logger.info(f"{request.method} {request.url.path} → {response.status_code} ({duration}ms)")
     return response
 
-# ─────────────────────────────────────────
-# Global exception handler
-# ─────────────────────────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled error: {exc}")
@@ -78,16 +69,10 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"success": False, "error": "Internal server error", "detail": str(exc)}
     )
 
-# ─────────────────────────────────────────
-# Routes
-# ─────────────────────────────────────────
 app.include_router(itinerary.router, prefix="/api/itinerary", tags=["Itinerary"])
 app.include_router(places.router,    prefix="/api/places",    tags=["Places"])
 app.include_router(weather.router,   prefix="/api/weather",   tags=["Weather"])
 
-# ─────────────────────────────────────────
-# Serve test frontend at /test
-# ─────────────────────────────────────────
 @app.get("/test", tags=["Test"], include_in_schema=False)
 async def serve_test_frontend():
     html_path = os.path.join(os.path.dirname(__file__), "test_frontend.html")
@@ -97,18 +82,18 @@ async def serve_test_frontend():
 async def root():
     return {
         "message": "AI Tourism Planner API 🗺️",
-        "version": "2.1.0",
-        "llm": "Gemini 1.5 Flash",
+        "version": "2.2.0",
+        "llm": "Groq llama-3.3-70b-versatile (free)",
         "docs": "/docs",
         "test_ui": "/test"
     }
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    return {"status": "healthy", "version": "2.1.0", "llm": "gemini-1.5-flash", "env": APP_ENV}
+    return {"status": "healthy", "version": "2.2.0", "llm": "groq/llama-3.3-70b-versatile", "env": APP_ENV}
 
 @app.on_event("startup")
 async def on_startup():
-    logger.info(f"AI Tourism Planner API v2.1.0 started 🚀 [{APP_ENV}]")
-    logger.info("LLM: Gemini 1.5 Flash | POI: Foursquare + Geoapify + OpenTripMap")
+    logger.info(f"AI Tourism Planner API v2.2.0 🚀 [{APP_ENV}]")
+    logger.info("LLM: Groq llama-3.3-70b-versatile (FREE 14,400 req/day)")
     logger.info("Test UI: http://localhost:8000/test")
