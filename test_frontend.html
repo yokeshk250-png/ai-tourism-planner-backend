@@ -58,6 +58,8 @@ input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2p
 .stop-card{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start;margin-bottom:7px;position:relative}
 .stop-card.alt-card{border-color:#3b1f6e}
 .stop-card.pinned-card{border-color:#065f46}
+.stop-card.dragging{opacity:.4;border-style:dashed}
+.stop-card.drop-target{border-color:#3b82f6;box-shadow:0 0 0 1px rgba(59,130,246,.6)}
 .stop-time-col{min-width:80px;text-align:center}
 .stop-time{color:#3b82f6;font-weight:700;font-size:.82rem;font-family:monospace}
 .stop-end-time{color:#475569;font-size:.7rem;font-family:monospace}
@@ -414,6 +416,7 @@ function renderItinerary(d,ms,container='gr'){
   }
   html+=`<span class="raw-toggle" onclick="rawToggle('gen')">{ } Raw JSON</span><div class="raw-json" id="rj-gen">${JSON.stringify(d,null,2)}</div>`
   showResult(container,html)
+  initDragAndDrop()
 }
 
 // ── SEARCH PLACES ─────────────────────────────────────────────────
@@ -520,6 +523,52 @@ async function rawReq(){
   }catch(e2){
     showResult('rawr',meta(false,Date.now()-t0)+`<div class="warn-banner">${e2.message}</div>`)
   }finally{setLoad('rawb','rawi',false,'🚀 Send')}
+}
+
+// ── Drag & Drop for stop cards (desktop) ─────────────────────────────────
+let _draggedCard=null
+function initDragAndDrop(){
+  const cards=document.querySelectorAll('.stop-card')
+  cards.forEach(card=>{
+    card.setAttribute('draggable','true')
+    card.addEventListener('dragstart',handleStopDragStart)
+    card.addEventListener('dragover',handleStopDragOver)
+    card.addEventListener('dragend',handleStopDragEnd)
+    card.addEventListener('drop',handleStopDrop)
+  })
+}
+function handleStopDragStart(e){
+  _draggedCard=e.currentTarget
+  _draggedCard.classList.add('dragging')
+  e.dataTransfer.effectAllowed='move'
+  e.dataTransfer.setData('text/plain','move')
+}
+function handleStopDragOver(e){
+  e.preventDefault()
+  if(!_draggedCard)return
+  const target=e.currentTarget
+  if(target===_draggedCard||!target.classList.contains('stop-card'))return
+  const rect=target.getBoundingClientRect()
+  const offset=e.clientY-rect.top
+  const midpoint=rect.height/2
+  const container=target.parentNode
+  container.querySelectorAll('.stop-card').forEach(c=>c.classList.remove('drop-target'))
+  target.classList.add('drop-target')
+  if(offset<midpoint){
+    container.insertBefore(_draggedCard,target)
+  }else{
+    container.insertBefore(_draggedCard,target.nextSibling)
+  }
+}
+function handleStopDrop(e){
+  e.preventDefault()
+}
+function handleStopDragEnd(e){
+  if(_draggedCard){
+    _draggedCard.classList.remove('dragging')
+  }
+  document.querySelectorAll('.stop-card.drop-target').forEach(c=>c.classList.remove('drop-target'))
+  _draggedCard=null
 }
 
 window.addEventListener('load',()=>setTimeout(ping,400))
