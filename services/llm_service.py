@@ -78,6 +78,10 @@ async def generate_place_candidates_llm(req: TripRequest) -> list:
     Ask Groq for top/must-visit tourist attractions ONLY.
     NO meals, NO restaurants, NO hotels.
 
+    Temperature=0 for determinism — same destination+profile always
+    yields the same candidate list, making runs reproducible and
+    preventing the "different places every run" non-determinism bug.
+
     Prompting rules that prevent generic/wrong-city names:
       • Every place must include a locality/area qualifier.
       • No generic names like "Vishnu Temple" or "Shiva Temple".
@@ -100,26 +104,10 @@ async def generate_place_candidates_llm(req: TripRequest) -> list:
     user_prompt = f"""Suggest the top {num} must-visit tourist attractions specifically in {req.destination}, India.
 
 IMPORTANT RULES FOR PLACE NAMES:
-1. Use the FULL local name (e.g. "Koodal Azhagar Temple, West Masi Street" not just "Vishnu Temple").
+1. Use the FULL local name with area qualifier (e.g. \"Kurinji Andavar Temple, Kodaikanal\" not just \"Temple\").
 2. Every place must be PHYSICALLY INSIDE or within 50 km of {req.destination} city centre.
-3. Prioritise places from this known list first, then add others:
-   - Meenakshi Amman Temple
-   - Thirumalai Nayak Palace
-   - Vandiyur Mariamman Teppakulam
-   - Koodal Azhagar Temple
-   - Gandhi Memorial Museum
-   - Goripalayam Dargah (Madurai)
-   - Thirupparankundram Murugan Temple
-   - Alagar Kovil (Azhagar Kovil)
-   - Pazhamudhircholai Murugan Temple
-   - Samanar Hills (Keelakuyilkudi)
-   - Yanaimalai
-   - Vilachery Pottery Village, Madurai
-   - Uchi Pillaiyar Temple, Madurai
-   - St. Mary's Cathedral, Madurai
-   - Madurai Railway Museum
-   - Aayiram Kaal Mandapam, Madurai
-4. Strictly NO generic temple names without locality qualifier.
+3. Include ALL well-known landmark attractions of {req.destination} — do not omit famous sights.
+4. Strictly NO generic temple/church/mosque names without specific local name and area.
 5. ATTRACTIONS ONLY — zero restaurants, zero cafes, zero meal stops.
 
 Traveller profile:
@@ -141,23 +129,26 @@ Return ONLY this JSON:
 {{
   "candidates": [
     {{
-      "place_name": "Meenakshi Amman Temple",
-      "category": "temple",
+      "place_name": "Kodaikanal Lake, Kodaikanal",
+      "category": "lake",
       "priority": 5,
-      "duration_hrs": 2.5,
+      "duration_hrs": 2.0,
       "best_slot": "morning",
-      "why_must_visit": "One of India's largest and most ornate Dravidian temples",
-      "opening_hours": "5:00 AM - 12:30 PM, 4:00 PM - 10:00 PM",
+      "why_must_visit": "Iconic star-shaped lake at the heart of the hill station",
+      "opening_hours": "6:00 AM - 6:00 PM",
       "closed_on": [],
       "entry_fee": 0,
-      "tip": "Arrive before 9 AM to beat crowds and see morning rituals"
+      "tip": "Rent a paddle boat for the best views"
     }}
   ]
 }}"""
 
+    # temperature=0 → deterministic output; same inputs always produce the same candidates.
+    # This fixes the "different places every run" non-determinism observed in run 5.
     raw = await _call_groq(
         [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-        max_tokens=4096
+        max_tokens=4096,
+        temperature=0,
     )
     data = _parse_json(raw)
     candidates = data.get("candidates", [])
@@ -202,6 +193,9 @@ async def suggest_alternates_llm(
     to target these slots specifically and to match their opening-hours
     requirements. This prevents the classic failure where S5 alternates
     all come back with '9am-5pm' OH while only evening/night slots are free.
+
+    Intentionally uses temperature=0.3 (NOT 0) so alternates are diverse
+    and different from the original S1 candidate set.
     """
     scheduled_names = [s.get("place_name", "") for s in scheduled_places]
     max_dur = max(0.5, round(failed_place.get("duration_hrs", 1.5) - 0.5, 1))
