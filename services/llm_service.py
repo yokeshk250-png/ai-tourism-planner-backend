@@ -324,3 +324,74 @@ Return ONLY this JSON:
     except Exception as e:
         logger.warning(f"enrich_place failed for '{place_name}': {e}")
         return {}
+
+
+# ─────────────────────────────────────────────────────────────
+# Customize Bot — Free-text → ActionPlan JSON
+# ─────────────────────────────────────────────────────────────
+async def run_customize_bot_llm(
+    user_message: str,
+    itinerary: list,
+    meta: dict,
+) -> dict:
+    """
+    Ask Groq to convert a free-text customization request into a
+    structured ActionPlan JSON that the customize_bot route can execute.
+
+    Supported operations: add | remove | swap | reorder | pin | settings
+
+    Rules enforced in prompt:
+    - No place duplicated across different days.
+    - Pinned stops must not be moved/removed unless user explicitly says so.
+    - For add/swap: place_name, duration_hrs, best_slot are required.
+    - Returns ONLY a JSON object — no natural language text.
+    """
+    system_prompt = """You are an itinerary customization planner.
+
+The user gives free-text wishes about changing their travel itinerary.
+You MUST respond with a single JSON ActionPlan object and nothing else.
+
+The ActionPlan schema is:
+{
+  "intent": "modify_itinerary",
+  "target_days": [optional array of integers],
+  "operations": [
+    { "op": "remove",  "day": <int>, "place_name": "<string>" },
+    { "op": "add",     "preferred_day": <int or null>, "new_place": { "place_name": "<string>", "duration_hrs": <float>, "best_slot": "<morning|afternoon|evening|night>", "category": "<string>" } },
+    { "op": "swap",    "day": <int>, "old_place_name": "<string>", "new_place": { "place_name": "<string>", "duration_hrs": <float>, "best_slot": "<morning|afternoon|evening|night>", "category": "<string>" } },
+    { "op": "reorder", "day": <int>, "new_order_place_names": ["<string>", ...] },
+    { "op": "pin",     "day": <int>, "place_name": "<string>", "pinned": <true|false> },
+    { "op": "settings","pace": "<relaxed|normal|fast>", "budget": "<low|medium|high>", "avoid_crowded": <bool>, "accessibility_needs": <bool> }
+  ]
+}
+
+STRICT RULES:
+1. NEVER duplicate a place across different days. If user wants to move a place from day X to day Y, emit remove(day=X) + add(preferred_day=Y).
+2. NEVER remove or reorder a stop that has pinned=true unless the user explicitly says to unpin or move it.
+3. For "add" and "swap" ops, always include at minimum: place_name, duration_hrs (0.5–4.0), best_slot, category.
+4. Only use day numbers that exist in the current itinerary.
+5. If the request is ambiguous, make the minimal safe change rather than wiping whole days.
+6. Do NOT output any natural language text — output ONLY the JSON object."""
+
+    user_prompt = (
+        "Current itinerary (JSON):\n"
+        + json.dumps(itinerary, ensure_ascii=False, indent=2)
+        + "\n\nTrip meta (JSON):\n"
+        + json.dumps(meta, ensure_ascii=False, indent=2)
+        + "\n\nUser customization request:\n"
+        + user_message
+    )
+
+    raw = await _call_groq(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_prompt},
+        ],
+        max_tokens=2048,
+        temperature=0.1,   # low temperature → deterministic, structured output
+    )
+    data = _parse_json(raw)
+    logger.info(
+        f"[bot] ActionPlan: intent={data.get('intent')} ops={len(data.get('operations', []))}"
+    )
+    return data
