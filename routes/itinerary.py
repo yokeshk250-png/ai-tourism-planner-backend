@@ -68,7 +68,7 @@ _BEST_TIME_TO_SLOT: dict = {
 # i.e. lowercase, strip non-alphanumeric (except space), first 35 chars.
 # ─────────────────────────────────────────────────────────────
 KNOWN_COORDS: dict[str, tuple[float, float]] = {
-    # ── Madurai ───────────────────────────────────────────────────────────────
+    # ── Madurai ──────────────────────────────────────────────────────────────────────────
     "goripalayam dargah":                (9.9275,  78.1133),
     "uchi pillaiyar temple":             (9.9330,  78.1191),
     "vilachery pottery village":         (9.8973,  78.1476),
@@ -77,7 +77,7 @@ KNOWN_COORDS: dict[str, tuple[float, float]] = {
     "nayak mahal thirumalai":            (9.9148,  78.1239),
     "madurai railway museum":            (9.9161,  78.1062),
     "madurai corporation ecopark":       (9.9355,  78.1382),
-    # ── Kodaikanal — viewpoints / walks ───────────────────────────────────────
+    # ── Kodaikanal — viewpoints / walks ───────────────────────────────────────────────
     "coakers walk kodaikanal":           (10.2301, 77.4940),
     "moir point":                        (10.2367, 77.4910),
     "moir point kodaikanal":             (10.2367, 77.4910),
@@ -89,17 +89,24 @@ KNOWN_COORDS: dict[str, tuple[float, float]] = {
     "green valley view":                 (10.2355, 77.4952),
     "green valley view kodaikanal":      (10.2355, 77.4952),
     "mannavanur view point":             (10.1667, 77.4167),
-    # ── Kodaikanal — lakes ────────────────────────────────────────────────────
+    # ── Kodaikanal — lakes ───────────────────────────────────────────────────────────
     # Berijam Lake is ~22 km SW of Kodaikanal town; Geoapify returns the town
     # lake coords instead — this entry forces the correct location.
     "berijam lake":                      (10.1700, 77.3990),
     "berijam lake kodaikanal":           (10.1700, 77.3990),
-    # ── Kodaikanal — caves / rocks ────────────────────────────────────────────
+    # Kodaikanal Lake Boathouse is the boating facility ON Kodaikanal Lake.
+    # Geoapify has no specific entry — pin to the lake itself.
+    "kodaikanal lake boathouse":         (10.2340, 77.4865),
+    "kodaikanal lake boathouse kodaikan": (10.2340, 77.4865),
+    # ── Kodaikanal — caves / rocks ───────────────────────────────────────────────
     "dolmen circle kodaikanal":          (10.2381, 77.4891),
     "pillar rocks":                      (10.2227, 77.4804),
     "pillar rocks kodaikanal":           (10.2227, 77.4804),
-    "guna cave":                         (10.2227, 77.4804),
-    "guna cave kodaikanal":              (10.2227, 77.4804),
+    # Guna Cave is at the base of Pillar Rocks — same GPS cluster, separate place.
+    # Give it a slightly offset coord (~200m NE) so _dedup_by_coords doesn't
+    # collapse it with Pillar Rocks at the 100m threshold.
+    "guna cave":                         (10.2235, 77.4816),
+    "guna cave kodaikanal":              (10.2235, 77.4816),
     # ── Kodaikanal — waterfalls ───────────────────────────────────────────────
     "silver cascade falls":              (10.2420, 77.5103),
     "silver cascade falls kodaikanal":   (10.2420, 77.5103),
@@ -112,29 +119,29 @@ KNOWN_COORDS: dict[str, tuple[float, float]] = {
     "fairy falls kodaikanal":            (10.2237, 77.4668),
     "pambar falls":                      (10.1950, 77.4120),
     "thalaiyar falls":                   (10.1133, 77.4167),
-    # ── Kodaikanal — parks / gardens ─────────────────────────────────────────
+    # ── Kodaikanal — parks / gardens ────────────────────────────────────────────
     "bryant park kodaikanal":            (10.2306, 77.4924),
     "bryant park entrance garden":       (10.2306, 77.4924),
     "chettiar park kodaikanal":          (10.2505, 77.4991),
     "kodai gardens":                     (10.2429, 77.4981),
-    # ── Kodaikanal — religious / cultural ────────────────────────────────────
+    # ── Kodaikanal — religious / cultural ─────────────────────────────────────────
     "kurinji andavar temple":            (10.2532, 77.5020),
     "kurinji andavar temple kodaikanal": (10.2532, 77.5020),
     "la salette church":                 (10.2365, 77.4894),
     "la salette church kodaikanal":      (10.2365, 77.4894),
     "shembaganur museum":                (10.2340, 77.4940),
     "shembaganur museum of natural hist": (10.2340, 77.4940),
-    # ── Kodaikanal — sports / recreation ─────────────────────────────────────
+    # ── Kodaikanal — sports / recreation ─────────────────────────────────────────
     "kodaikanal golf club":              (10.2145, 77.4708),
     "kodaikanal golf club kodaikanal":   (10.2145, 77.4708),
     "kodaikanal cricket club":           (10.2340, 77.4889),
     "kodaikanal cricket club kodaikana": (10.2340, 77.4889),
-    # ── Kodaikanal — forests / trails ────────────────────────────────────────
+    # ── Kodaikanal — forests / trails ────────────────────────────────────────────
     "pine forest kodaikanal":            (10.2134, 77.4586),
-    # ── Kodaikanal — other ────────────────────────────────────────────────────
+    # ── Kodaikanal — other ───────────────────────────────────────────────────────────
     "vattakanal viewpoint":              (10.2097, 77.4659),
     "vattakanal viewpoint dindigul":     (10.2097, 77.4659),
-    # ── Generic fallbacks for other hill stations can be added here ──────────
+    # ── Generic fallbacks for other hill stations can be added here ───────────
 }
 
 # Set of KNOWN_COORDS keys for O(1) priority-check lookup
@@ -197,8 +204,69 @@ def _dedup_candidates(candidates: list) -> list:
     deduped = list(seen.values())
     removed = len(candidates) - len(deduped)
     if removed:
-        logger.info(f"[dedup] removed {removed} duplicate candidate(s)")
+        logger.info(f"[dedup] removed {removed} duplicate candidate(s) by name")
     return deduped
+
+
+def _dedup_by_coords(candidates: list, radius_m: float = 100.0) -> list:
+    """
+    Remove coord-identical duplicate candidates.
+
+    When two candidates resolve to the same physical location (within
+    `radius_m` metres), keep the one with the higher priority and discard
+    the other. This catches LLM hallucinations like:
+      - Guna Cave  vs Pillar Rocks  (identical coords 10.2227, 77.4804)
+      - Echo Point vs Moier Point   (same viewpoint, 0m apart)
+
+    Candidates with lat=None are always kept (no coord to compare).
+    Priority order: higher priority wins; on a tie the first occurrence wins.
+    """
+    kept: list[dict] = []
+    radius_km = radius_m / 1000.0
+
+    for c in candidates:
+        c_lat = c.get("lat")
+        c_lon = c.get("lon")
+        if c_lat is None or c_lon is None:
+            kept.append(c)
+            continue
+
+        duplicate_of = None
+        for existing in kept:
+            e_lat = existing.get("lat")
+            e_lon = existing.get("lon")
+            if e_lat is None or e_lon is None:
+                continue
+            dist = _haversine_km(c_lat, c_lon, e_lat, e_lon)
+            if dist <= radius_km:
+                duplicate_of = existing
+                break
+
+        if duplicate_of is None:
+            kept.append(c)
+        else:
+            c_pri   = int(c.get("priority", 3))
+            ex_pri  = int(duplicate_of.get("priority", 3))
+            c_name  = c.get("place_name", "?")
+            ex_name = duplicate_of.get("place_name", "?")
+            if c_pri > ex_pri:
+                # Replace the existing lower-priority entry
+                kept.remove(duplicate_of)
+                kept.append(c)
+                logger.info(
+                    f"[coord-dedup] '{ex_name}' (pri={ex_pri}) replaced by "
+                    f"'{c_name}' (pri={c_pri}) — same location (<{radius_m:.0f}m)"
+                )
+            else:
+                logger.info(
+                    f"[coord-dedup] '{c_name}' (pri={c_pri}) dropped — "
+                    f"same location as '{ex_name}' (pri={ex_pri}) (<{radius_m:.0f}m)"
+                )
+
+    removed = len(candidates) - len(kept)
+    if removed:
+        logger.info(f"[coord-dedup] removed {removed} coord-duplicate candidate(s)")
+    return kept
 
 
 def _remove_already_scheduled(unscheduled: list, scheduled: list) -> list:
@@ -302,14 +370,14 @@ async def _geocode_candidates(
         lat, lon = None, None
         source   = "none"
 
-        # ── 0: KNOWN_COORDS priority override ──────────────────────────────
+        # ── 0: KNOWN_COORDS priority override ────────────────────────────────────────────
         known = _lookup_known(key)
         if known:
             lat, lon = known
             source   = "known_coords_priority"
             logger.debug(f"[geocode] '{name}' → KNOWN_COORDS (priority) ({lat}, {lon})")
 
-        # ── 1: API geocode (only if not overridden by KNOWN_COORDS) ────────
+        # ── 1: API geocode (only if not overridden by KNOWN_COORDS) ─────────────────
         if lat is None:
             try:
                 coords = await geocode_place(place_name=name, city=destination)
@@ -328,7 +396,7 @@ async def _geocode_candidates(
                         f"[geocode] '{name}' API coords too far ({dist:.0f}km) — trying KNOWN_COORDS"
                     )
 
-        # ── 2: KNOWN_COORDS fallback (API failed or too far) ───────────────
+        # ── 2: KNOWN_COORDS fallback (API failed or too far) ───────────────────────
         if lat is None:
             fb = _lookup_known(key)
             if fb:
@@ -336,7 +404,7 @@ async def _geocode_candidates(
                 source   = "known_coords_fallback"
                 logger.debug(f"[geocode] '{name}' → KNOWN_COORDS (fallback) ({lat}, {lon})")
 
-        # ── 3: No coords ────────────────────────────────────────────────────
+        # ── 3: No coords ────────────────────────────────────────────────────────────
         if lat is None:
             c["lat"] = None
             c["lon"] = None
@@ -370,15 +438,16 @@ async def _geocode_candidates(
 # POST /api/itinerary/generate
 #
 # 6-stage pipeline:
-#   S1  — Groq: top must-visit candidates (no meals)
-#   S1.5— Dedup: remove duplicate place names from LLM output
-#   S2  — Geocode: KNOWN_COORDS priority → API → KNOWN_COORDS fallback → None
-#   S2.5— Enrich: opening hrs, real duration, fees, slot (city-anchored)
-#   S3  — Build day slots
-#   S4  — Schedule (opening-hours enforced)
-#   S4.5— Cross-list dedup: remove already-scheduled from unscheduled
-#   S5  — Conflict resolver (Groq alternates, geocoded + filtered)
-#   S6  — Weather warnings
+#   S1   — Groq: top must-visit candidates (no meals)
+#   S1.5 — Dedup: remove duplicate place names from LLM output
+#   S1.6 — Coord-dedup: remove coord-identical candidates (100m radius)
+#   S2   — Geocode: KNOWN_COORDS priority → API → KNOWN_COORDS fallback → None
+#   S2.5 — Enrich: opening hrs, real duration, fees, slot (city-anchored)
+#   S3   — Build day slots
+#   S4   — Schedule (opening-hours enforced)
+#   S4.5 — Cross-list dedup: remove already-scheduled from unscheduled
+#   S5   — Conflict resolver (Groq alternates w/ free_slots, geocoded + filtered)
+#   S6   — Weather warnings
 # ─────────────────────────────────────────────────────────────
 @router.post("/generate", response_model=ItineraryResponse)
 async def generate_itinerary(req: TripRequest):
@@ -402,11 +471,11 @@ async def generate_itinerary(req: TripRequest):
         raw_candidates = await generate_place_candidates_llm(req)
         logger.info(f"[gen] S1: {len(raw_candidates)} candidates")
 
-        # ─ S1.5: Dedup LLM output ─
+        # ─ S1.5: Dedup LLM output by name ─
         raw_candidates = _dedup_candidates(
             [c if isinstance(c, dict) else c.model_dump() for c in raw_candidates]
         )
-        logger.info(f"[gen] S1.5: {len(raw_candidates)} after dedup")
+        logger.info(f"[gen] S1.5: {len(raw_candidates)} after name-dedup")
 
         # ─ S2: Geocode — KNOWN_COORDS priority → API → KNOWN_COORDS fallback ─
         if city_lat is not None:
@@ -419,6 +488,11 @@ async def generate_itinerary(req: TripRequest):
                 for c in raw_candidates
             ]
         logger.info(f"[gen] S2: {len(candidates)} candidates after geocode+filter")
+
+        # ─ S1.6: Coord-dedup — drop places at the same physical location (100m) ─
+        # Run AFTER geocode so coords are resolved. Keeps highest-priority entry.
+        candidates = _dedup_by_coords(candidates, radius_m=100.0)
+        logger.info(f"[gen] S1.6: {len(candidates)} after coord-dedup")
 
         # ─ S2.5: Enrich ─
         candidates = await _enrich_all_candidates(candidates, req.destination)
@@ -445,18 +519,43 @@ async def generate_itinerary(req: TripRequest):
         unscheduled = _remove_already_scheduled(unscheduled, scheduled)
         logger.info(f"[gen] S4.5: {len(unscheduled)} unscheduled after cross-list dedup")
 
-        # ─ S5: Conflict resolution — Groq alternates ─
+        # ─ S5: Conflict resolution — Groq alternates (slot-aware) ─
         if unscheduled:
             logger.info(f"[gen] S5: resolving {len(unscheduled)} conflicts")
             still_unscheduled = []
 
             for failed in unscheduled:
-                slot_name = failed.get("best_slot", "morning")
+                slot_name     = failed.get("best_slot", "morning")
+                failed_dur    = int(float(failed.get("duration_hrs", 1.0)) * 60)
+
+                # Compute which slots still have capacity for this place's duration.
+                # Pass to suggest_alternates_llm so the LLM targets OH that match
+                # the actual free windows (prevents alternates with 9am-5pm OH
+                # being generated when only evening/night slots remain).
+                free_slots = [
+                    s["slot_name"]
+                    for s in slots
+                    if s["remaining_mins"] >= failed_dur
+                ]
+                # Deduplicate slot names (multiple days may have the same slot free)
+                seen_slots: set[str] = set()
+                free_slots_ordered: list[str] = []
+                for sl in free_slots:
+                    if sl not in seen_slots:
+                        seen_slots.add(sl)
+                        free_slots_ordered.append(sl)
+
+                logger.info(
+                    f"[gen] S5: '{failed.get('place_name')}' — "
+                    f"free_slots={free_slots_ordered}"
+                )
+
                 alts = await suggest_alternates_llm(
                     destination=req.destination,
                     failed_place=failed,
                     scheduled_places=scheduled,
                     slot_name=slot_name,
+                    free_slots=free_slots_ordered or None,
                 )
                 if not alts:
                     still_unscheduled.append(failed)
@@ -471,6 +570,7 @@ async def generate_itinerary(req: TripRequest):
 
                 enriched_alts = await _enrich_all_candidates(enriched_alts, req.destination)
                 enriched_alts = _dedup_candidates(enriched_alts)
+                enriched_alts = _dedup_by_coords(enriched_alts, radius_m=100.0)
                 for a in enriched_alts:
                     a["is_alternate"] = True
 
