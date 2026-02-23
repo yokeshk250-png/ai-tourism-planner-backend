@@ -19,7 +19,8 @@ from services.scheduler_service import build_day_slots, schedule_candidates
 from services.weather_service import get_weather_forecast
 from services.firebase_service import (
     save_itinerary, get_itinerary,
-    save_place_rating, get_user_itineraries
+    save_place_rating, get_user_itineraries,
+    update_itinerary
 )
 
 logger = logging.getLogger(__name__)
@@ -633,7 +634,7 @@ async def generate_itinerary(req: TripRequest):
 
                 enriched_alts = await _enrich_all_candidates(enriched_alts, req.destination)
                 enriched_alts = _dedup_candidates(enriched_alts)
-                enriched_alts = _filter_non_tourist_candidates(enriched_alts)
+                enriched_alts = _filter_non_tourist_categories(enriched_alts)
                 enriched_alts = _dedup_by_coords(enriched_alts, radius_m=100.0)
                 for a in enriched_alts:
                     a["is_alternate"] = True
@@ -764,4 +765,43 @@ async def rate_place(rating: UserRating):
         await save_place_rating(rating.user_id, rating.place_id, rating.rating, rating.review or "")
         return {"success": True, "message": "Rating saved"}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
+
+
+# ─────────────────────────────────────────────────────────────
+# PATCH /api/itinerary/{itinerary_id}/update
+# Update saved itinerary (for customization)
+# ─────────────────────────────────────────────────────────────
+@router.patch("/{itinerary_id}/update")
+async def update_saved_itinerary(itinerary_id: str, user_id: str, updates: dict):
+    """
+    Update a saved itinerary with new data (e.g., after drag-and-drop reorder).
+    
+    Args:
+        itinerary_id: Firebase document ID
+        user_id: User ID (for verification)
+        updates: Dict containing fields to update (e.g., 'itinerary', 'meta')
+    
+    Returns:
+        {"success": True, "message": "Updated"}
+    """
+    try:
+        # Verify ownership
+        existing = await get_itinerary(itinerary_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Itinerary not found")
+        
+        if existing.get("user_id") != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        # Update in Firebase
+        await update_itinerary(itinerary_id, updates)
+        
+        logger.info(f"[update] Itinerary {itinerary_id} updated by {user_id}")
+        return {"success": True, "message": "Itinerary updated"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[update] Error: {e}")
         raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
