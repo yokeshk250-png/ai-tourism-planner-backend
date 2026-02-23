@@ -3,7 +3,7 @@ import logging
 import math
 import re
 from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from models.schemas import (
     TripRequest, ItineraryResponse, ItineraryMeta,
     ScheduledStop, PlaceCandidate, TimeSlot,
@@ -773,7 +773,11 @@ async def rate_place(rating: UserRating):
 # Update saved itinerary (for customization)
 # ─────────────────────────────────────────────────────────────
 @router.patch("/{itinerary_id}/update")
-async def update_saved_itinerary(itinerary_id: str, user_id: str, updates: dict):
+async def update_saved_itinerary(
+    itinerary_id: str,
+    user_id: str = Query(...),
+    updates: dict = None
+):
     """
     Update a saved itinerary with new data (e.g., after drag-and-drop reorder).
     
@@ -786,6 +790,9 @@ async def update_saved_itinerary(itinerary_id: str, user_id: str, updates: dict)
         {"success": True, "message": "Updated"}
     """
     try:
+        if not updates:
+            raise HTTPException(status_code=400, detail="No updates provided")
+        
         # Verify ownership
         existing = await get_itinerary(itinerary_id)
         if not existing:
@@ -795,7 +802,7 @@ async def update_saved_itinerary(itinerary_id: str, user_id: str, updates: dict)
             raise HTTPException(status_code=403, detail="Not authorized")
         
         # Update in Firebase
-        await update_itinerary(itinerary_id, updates)
+        await update_itinerary(user_id, itinerary_id, updates)
         
         logger.info(f"[update] Itinerary {itinerary_id} updated by {user_id}")
         return {"success": True, "message": "Itinerary updated"}
