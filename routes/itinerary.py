@@ -55,49 +55,106 @@ _BEST_TIME_TO_SLOT: dict = {
 }
 
 # ─────────────────────────────────────────────────────────────
-# Curated fallback coordinates for places that Geoapify commonly
+# Curated coordinates for places that Geoapify commonly
 # mis-geocodes or returns no result for.
-# Key: lowercased, punctuation-stripped prefix of place_name (first 35 chars).
-# These are used ONLY when geocode_place() returns None or a wrong-city hit.
+#
+# IMPORTANT — Resolution priority in _geocode_candidates():
+#   1st: KNOWN_COORDS (always checked first for listed places)
+#   2nd: geocode_place() API (for all non-KNOWN places)
+#   3rd: KNOWN_COORDS again (if API returned None or >MAX_PLACE_DISTANCE_KM)
+#   4th: lat=None (scheduler uses default 15-min travel estimate)
+#
+# Key format: re.sub(r'[^a-z0-9 ]', '', name.lower()).strip()[:35]
+# i.e. lowercase, strip non-alphanumeric (except space), first 35 chars.
 # ─────────────────────────────────────────────────────────────
 KNOWN_COORDS: dict[str, tuple[float, float]] = {
     # ── Madurai ───────────────────────────────────────────────────────────────
-    "goripalayam dargah":                (9.9275, 78.1133),
-    "uchi pillaiyar temple":             (9.9330, 78.1191),
-    "vilachery pottery village":         (9.8973, 78.1476),
-    "samanar hills":                     (9.9189, 78.0556),
-    "aayiram kaal mandapam":             (9.9197, 78.1185),
-    "nayak mahal thirumalai":            (9.9148, 78.1239),
-    "madurai railway museum":            (9.9161, 78.1062),
-    "madurai corporation ecopark":       (9.9355, 78.1382),
-    # ── Kodaikanal ────────────────────────────────────────────────────────────
-    "dolmen circle kodaikanal":          (10.2381, 77.4891),
-    "pillar rocks kodaikanal":           (10.2227, 77.4804),
-    "pillar rocks":                      (10.2227, 77.4804),
-    "vattakanal falls":                  (10.2097, 77.4659),
-    "liril falls":                       (10.2097, 77.4659),
-    "guna cave kodaikanal":              (10.2227, 77.4804),
-    "guna cave":                         (10.2227, 77.4804),
-    "shembaganur museum":                (10.2340, 77.4940),
-    "la salette church kodaikanal":      (10.2365, 77.4894),
-    "la salette church":                 (10.2365, 77.4894),
-    "berijam lake kodaikanal":           (10.1700, 77.3990),
-    "berijam lake":                      (10.1700, 77.3990),
-    "bear shola falls":                  (10.2396, 77.4786),
-    "pambar falls":                      (10.1950, 77.4120),
-    "mannavanur view point":             (10.1667, 77.4167),
-    "thalaiyar falls":                   (10.1133, 77.4167),
+    "goripalayam dargah":                (9.9275,  78.1133),
+    "uchi pillaiyar temple":             (9.9330,  78.1191),
+    "vilachery pottery village":         (9.8973,  78.1476),
+    "samanar hills":                     (9.9189,  78.0556),
+    "aayiram kaal mandapam":             (9.9197,  78.1185),
+    "nayak mahal thirumalai":            (9.9148,  78.1239),
+    "madurai railway museum":            (9.9161,  78.1062),
+    "madurai corporation ecopark":       (9.9355,  78.1382),
+    # ── Kodaikanal — viewpoints / walks ───────────────────────────────────────
+    "coakers walk kodaikanal":           (10.2301, 77.4940),
+    "moir point":                        (10.2367, 77.4910),
+    "moir point kodaikanal":             (10.2367, 77.4910),
+    "moir point theni":                  (10.2367, 77.4910),  # LLM city-suffix variant
+    "moier point":                       (10.2367, 77.4910),  # LLM typo variant
+    "moier point kodaikanal":            (10.2367, 77.4910),
     "echo point kodaikanal":             (10.2367, 77.4910),
-    "fairy falls kodaikanal":            (10.2237, 77.4668),
-    "fairy falls":                       (10.2237, 77.4668),
+    "echo point":                        (10.2367, 77.4910),
+    "green valley view":                 (10.2355, 77.4952),
+    "green valley view kodaikanal":      (10.2355, 77.4952),
+    "mannavanur view point":             (10.1667, 77.4167),
+    # ── Kodaikanal — lakes ────────────────────────────────────────────────────
+    # Berijam Lake is ~22 km SW of Kodaikanal town; Geoapify returns the town
+    # lake coords instead — this entry forces the correct location.
+    "berijam lake":                      (10.1700, 77.3990),
+    "berijam lake kodaikanal":           (10.1700, 77.3990),
+    # ── Kodaikanal — caves / rocks ────────────────────────────────────────────
+    "dolmen circle kodaikanal":          (10.2381, 77.4891),
+    "pillar rocks":                      (10.2227, 77.4804),
+    "pillar rocks kodaikanal":           (10.2227, 77.4804),
+    "guna cave":                         (10.2227, 77.4804),
+    "guna cave kodaikanal":              (10.2227, 77.4804),
+    # ── Kodaikanal — waterfalls ───────────────────────────────────────────────
+    "silver cascade falls":              (10.2420, 77.5103),
+    "silver cascade falls kodaikanal":   (10.2420, 77.5103),
+    "bear shola falls":                  (10.2396, 77.4786),
+    "bear shola falls kodaikanal":       (10.2396, 77.4786),
+    "vattakanal falls":                  (10.2097, 77.4659),
     "vattakanal falls dindigul":         (10.2097, 77.4659),
+    "liril falls":                       (10.2097, 77.4659),
+    "fairy falls":                       (10.2237, 77.4668),
+    "fairy falls kodaikanal":            (10.2237, 77.4668),
+    "pambar falls":                      (10.1950, 77.4120),
+    "thalaiyar falls":                   (10.1133, 77.4167),
+    # ── Kodaikanal — parks / gardens ─────────────────────────────────────────
+    "bryant park kodaikanal":            (10.2306, 77.4924),
+    "bryant park entrance garden":       (10.2306, 77.4924),
+    "chettiar park kodaikanal":          (10.2505, 77.4991),
+    "kodai gardens":                     (10.2429, 77.4981),
+    # ── Kodaikanal — religious / cultural ────────────────────────────────────
+    "kurinji andavar temple":            (10.2532, 77.5020),
+    "kurinji andavar temple kodaikanal": (10.2532, 77.5020),
+    "la salette church":                 (10.2365, 77.4894),
+    "la salette church kodaikanal":      (10.2365, 77.4894),
+    "shembaganur museum":                (10.2340, 77.4940),
+    "shembaganur museum of natural hist": (10.2340, 77.4940),
+    # ── Kodaikanal — sports / recreation ─────────────────────────────────────
+    "kodaikanal golf club":              (10.2145, 77.4708),
+    "kodaikanal golf club kodaikanal":   (10.2145, 77.4708),
+    "kodaikanal cricket club":           (10.2340, 77.4889),
+    "kodaikanal cricket club kodaikana": (10.2340, 77.4889),
+    # ── Kodaikanal — forests / trails ────────────────────────────────────────
+    "pine forest kodaikanal":            (10.2134, 77.4586),
+    # ── Kodaikanal — other ────────────────────────────────────────────────────
+    "vattakanal viewpoint":              (10.2097, 77.4659),
+    "vattakanal viewpoint dindigul":     (10.2097, 77.4659),
     # ── Generic fallbacks for other hill stations can be added here ──────────
 }
+
+# Set of KNOWN_COORDS keys for O(1) priority-check lookup
+_KNOWN_KEYS: frozenset = frozenset(KNOWN_COORDS.keys())
 
 
 def _coords_key(name: str) -> str:
     """Normalise place_name to a KNOWN_COORDS lookup key."""
     return re.sub(r'[^a-z0-9 ]', '', name.lower()).strip()[:35]
+
+
+def _lookup_known(key: str) -> tuple[float, float] | None:
+    """Return curated coords for key (exact) or first prefix/substring match."""
+    fb = KNOWN_COORDS.get(key)
+    if fb:
+        return fb
+    for k, v in KNOWN_COORDS.items():
+        if k in key or key.startswith(k[:20]):
+            return v
+    return None
 
 
 # ─────────────────────────────────────────────────────────────
@@ -118,7 +175,6 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 def _canonical_name(name: str) -> str:
     """Normalise place name for duplicate detection."""
-    # strip city suffix after first comma, lower, remove punctuation, first 30 chars
     base = name.split(",")[0].strip().lower()
     return re.sub(r'[^a-z0-9]', '', base)[:30]
 
@@ -127,9 +183,6 @@ def _dedup_candidates(candidates: list) -> list:
     """
     Remove duplicate place candidates (same canonical name).
     When duplicates exist, keep the one with the highest priority.
-    Preserves original ordering for non-duplicates.
-
-    Fixes: 'Bear Shola Falls' x2, 'Pambar Falls' x2 in unscheduled list.
     """
     seen: dict[str, dict] = {}
     for c in candidates:
@@ -150,9 +203,7 @@ def _dedup_candidates(candidates: list) -> list:
 
 def _remove_already_scheduled(unscheduled: list, scheduled: list) -> list:
     """
-    Remove from unscheduled any place that is already present in scheduled
-    (matched by canonical name). Prevents the same place appearing in both
-    lists when an alternate was scheduled in S4.
+    Remove from unscheduled any place already present in scheduled.
     """
     sched_names = {_canonical_name(s.get("place_name", "")) for s in scheduled}
     filtered    = [u for u in unscheduled if _canonical_name(u.get("place_name", "")) not in sched_names]
@@ -163,22 +214,13 @@ def _remove_already_scheduled(unscheduled: list, scheduled: list) -> list:
 
 
 def _merge_enrich_data(candidate: dict, enrich_data: dict) -> dict:
-    """
-    Merge Groq enrich response into a candidate dict.
-    Enrich values override the LLM's initial guesses because they come
-    from a focused, per-place prompt — more accurate for scheduling.
-    """
     c = dict(candidate)
-
     if enrich_data.get("opening_hours"):
         c["opening_hours"] = enrich_data["opening_hours"]
-
     if enrich_data.get("closed_on") is not None:
         c["closed_on"] = enrich_data["closed_on"]
-
     if enrich_data.get("avg_visit_duration_hrs"):
         c["duration_hrs"] = float(enrich_data["avg_visit_duration_hrs"])
-
     if enrich_data.get("best_time_to_visit"):
         btt  = enrich_data["best_time_to_visit"].lower().strip()
         slot = _BEST_TIME_TO_SLOT.get(btt) or next(
@@ -186,28 +228,18 @@ def _merge_enrich_data(candidate: dict, enrich_data: dict) -> dict:
         )
         if slot:
             c["best_slot"] = slot
-
     if enrich_data.get("entry_fee_indian") is not None:
         c["entry_fee"] = enrich_data["entry_fee_indian"]
-
     if enrich_data.get("entry_fee_foreign") is not None:
         c["entry_fee_foreign"] = enrich_data["entry_fee_foreign"]
-
     if enrich_data.get("local_tip"):
         c["tip"] = enrich_data["local_tip"]
-
     if enrich_data.get("nearby_food"):
         c["nearby_food"] = enrich_data["nearby_food"]
-
     return c
 
 
 async def _enrich_all_candidates(candidates: list, destination: str) -> list:
-    """
-    Enrich candidates using per-place Groq calls (concurrent, semaphore-limited).
-    Only enriches the top MAX_ENRICH by priority.
-    destination is passed into each enrich call to ground Groq to the right city.
-    """
     sem = asyncio.Semaphore(5)
 
     async def _enrich_one(c: dict) -> dict:
@@ -224,7 +256,6 @@ async def _enrich_all_candidates(candidates: list, destination: str) -> list:
     sorted_cands = sorted(candidates, key=lambda x: -int(x.get("priority", 3)))
     to_enrich    = sorted_cands[:MAX_ENRICH]
     rest         = sorted_cands[MAX_ENRICH:]
-
     enriched = list(await asyncio.gather(*[_enrich_one(c) for c in to_enrich]))
     logger.info(f"[enrich] {len(enriched)} enriched, {len(rest)} kept as-is")
     return enriched + rest
@@ -246,17 +277,19 @@ async def _geocode_candidates(
     city_lon: float,
 ) -> list:
     """
-    Resolve lat/lon for every candidate via geocode_place() (city-anchored).
+    Resolve lat/lon for every candidate.
 
     Resolution order:
-      1. geocode_place() API call.
-      2. If API returns None OR coords are >MAX_PLACE_DISTANCE_KM away,
-         fall back to KNOWN_COORDS table (curated for common mis-geocodes).
-      3. If still no coords, keep lat=None/lon=None (scheduler uses default
-         travel estimate).
+      0. KNOWN_COORDS priority check — if the place_name key is in the curated
+         table we use it immediately WITHOUT calling the API. This prevents
+         Geoapify from silently returning plausible-but-wrong coords for known
+         mis-geocoded places (e.g. Berijam Lake → Kodaikanal Lake area).
+      1. geocode_place() API call (only for non-KNOWN places).
+      2. KNOWN_COORDS fallback (if API returned None or > MAX_PLACE_DISTANCE_KM).
+      3. lat=None — kept in list, scheduler uses default 15-min travel estimate.
 
-    Hard drop: places whose final coords exceed MAX_PLACE_DISTANCE_KM AND
-    are not in KNOWN_COORDS are dropped entirely (wrong-city geocode).
+    Hard drop: places whose final resolved coords exceed MAX_PLACE_DISTANCE_KM
+    from the city centre and are NOT in KNOWN_COORDS are removed (wrong-city).
     """
     out     = []
     dropped = 0
@@ -269,40 +302,41 @@ async def _geocode_candidates(
         lat, lon = None, None
         source   = "none"
 
-        # 1 — API geocode
-        try:
-            coords = await geocode_place(place_name=name, city=destination)
-        except Exception as ge:
-            logger.debug(f"[geocode] skip '{name}': {ge}")
-            coords = None
+        # ── 0: KNOWN_COORDS priority override ──────────────────────────────
+        known = _lookup_known(key)
+        if known:
+            lat, lon = known
+            source   = "known_coords_priority"
+            logger.debug(f"[geocode] '{name}' → KNOWN_COORDS (priority) ({lat}, {lon})")
 
-        if coords:
-            api_lat, api_lon = coords["lat"], coords["lon"]
-            dist = _haversine_km(city_lat, city_lon, api_lat, api_lon)
-            if dist <= MAX_PLACE_DISTANCE_KM:
-                lat, lon = api_lat, api_lon
-                source   = f"api ({dist:.1f}km)"
-            else:
-                logger.debug(
-                    f"[geocode] '{name}' API coords too far ({dist:.0f}km) — checking KNOWN_COORDS"
-                )
-
-        # 2 — KNOWN_COORDS fallback (exact key or prefix match)
+        # ── 1: API geocode (only if not overridden by KNOWN_COORDS) ────────
         if lat is None:
-            # try exact key first, then any KNOWN_COORDS key that starts with / is contained in key
-            fb = KNOWN_COORDS.get(key)
-            if fb is None:
-                for k, v in KNOWN_COORDS.items():
-                    if k in key or key.startswith(k[:20]):
-                        fb = v
-                        break
+            try:
+                coords = await geocode_place(place_name=name, city=destination)
+            except Exception as ge:
+                logger.debug(f"[geocode] skip '{name}': {ge}")
+                coords = None
+
+            if coords:
+                api_lat, api_lon = coords["lat"], coords["lon"]
+                dist = _haversine_km(city_lat, city_lon, api_lat, api_lon)
+                if dist <= MAX_PLACE_DISTANCE_KM:
+                    lat, lon = api_lat, api_lon
+                    source   = f"api ({dist:.1f}km)"
+                else:
+                    logger.debug(
+                        f"[geocode] '{name}' API coords too far ({dist:.0f}km) — trying KNOWN_COORDS"
+                    )
+
+        # ── 2: KNOWN_COORDS fallback (API failed or too far) ───────────────
+        if lat is None:
+            fb = _lookup_known(key)
             if fb:
                 lat, lon = fb
-                dist     = _haversine_km(city_lat, city_lon, lat, lon)
-                source   = f"known_coords ({dist:.1f}km)"
-                logger.debug(f"[geocode] '{name}' → KNOWN_COORDS ({lat}, {lon})")
+                source   = "known_coords_fallback"
+                logger.debug(f"[geocode] '{name}' → KNOWN_COORDS (fallback) ({lat}, {lon})")
 
-        # 3 — No coords
+        # ── 3: No coords ────────────────────────────────────────────────────
         if lat is None:
             c["lat"] = None
             c["lon"] = None
@@ -310,7 +344,7 @@ async def _geocode_candidates(
             out.append(c)
             continue
 
-        # Hard distance check on final coords
+        # Hard distance check
         dist_final = _haversine_km(city_lat, city_lon, lat, lon)
         if dist_final > MAX_PLACE_DISTANCE_KM:
             logger.warning(
@@ -338,7 +372,7 @@ async def _geocode_candidates(
 # 6-stage pipeline:
 #   S1  — Groq: top must-visit candidates (no meals)
 #   S1.5— Dedup: remove duplicate place names from LLM output
-#   S2  — Geocode: city-anchored lat/lon + KNOWN_COORDS fallback + distance filter
+#   S2  — Geocode: KNOWN_COORDS priority → API → KNOWN_COORDS fallback → None
 #   S2.5— Enrich: opening hrs, real duration, fees, slot (city-anchored)
 #   S3  — Build day slots
 #   S4  — Schedule (opening-hours enforced)
@@ -374,7 +408,7 @@ async def generate_itinerary(req: TripRequest):
         )
         logger.info(f"[gen] S1.5: {len(raw_candidates)} after dedup")
 
-        # ─ S2: Geocode — city-anchored + KNOWN_COORDS fallback + distance filter ─
+        # ─ S2: Geocode — KNOWN_COORDS priority → API → KNOWN_COORDS fallback ─
         if city_lat is not None:
             candidates = await _geocode_candidates(
                 raw_candidates, req.destination, city_lat, city_lon
@@ -428,7 +462,6 @@ async def generate_itinerary(req: TripRequest):
                     still_unscheduled.append(failed)
                     continue
 
-                # geocode + distance-filter + enrich alternates the same way as main candidates
                 if city_lat is not None:
                     enriched_alts = await _geocode_candidates(
                         alts, req.destination, city_lat, city_lon
@@ -437,7 +470,7 @@ async def generate_itinerary(req: TripRequest):
                     enriched_alts = [dict(a) if isinstance(a, dict) else a.model_dump() for a in alts]
 
                 enriched_alts = await _enrich_all_candidates(enriched_alts, req.destination)
-                enriched_alts = _dedup_candidates(enriched_alts)  # dedup alts too
+                enriched_alts = _dedup_candidates(enriched_alts)
                 for a in enriched_alts:
                     a["is_alternate"] = True
 
@@ -448,7 +481,6 @@ async def generate_itinerary(req: TripRequest):
                     day_dates=day_dates or None,
                 )
                 scheduled.extend(alt_sched)
-                # dedup alt_unsched against scheduled before appending
                 if alt_unsched:
                     alt_unsched = _remove_already_scheduled(alt_unsched, scheduled)
                     still_unscheduled.extend(alt_unsched)
