@@ -76,7 +76,7 @@ def _parse_json(raw: str) -> dict:
 async def generate_place_candidates_llm(req: TripRequest) -> list:
     """
     Ask Groq for top/must-visit tourist attractions ONLY.
-    NO meals, NO restaurants, NO hotels.
+    NO meals, NO restaurants, NO hotels, NO educational institutions.
 
     Temperature=0 for determinism — same destination+profile always
     yields the same candidate list, making runs reproducible and
@@ -87,6 +87,7 @@ async def generate_place_candidates_llm(req: TripRequest) -> list:
       • No generic names like "Vishnu Temple" or "Shiva Temple".
       • Wikipedia-verifiable, named places only.
       • Strictly within or near the destination city.
+      • NO colleges, universities, institutes, schools.
     """
     num = max(req.days * 7, 18)  # Ample candidates for scheduler to pick from
 
@@ -97,7 +98,10 @@ async def generate_place_candidates_llm(req: TripRequest) -> list:
         "NEVER use generic names like 'Vishnu Temple', 'Shiva Temple', 'Subramanya Temple' without "
         "the specific temple name used locally. "
         "NEVER suggest restaurants, cafes, hotels, or any food/meal stops. "
-        "ONLY suggest places that are physically within 50 km of the city centre. "
+        "NEVER suggest colleges, universities, institutes, schools, business schools, or any educational institutions. "
+        "NEVER suggest hospitals, banks, government offices, or administrative buildings. "
+        "NEVER suggest private property or places with restricted public access. "
+        "ONLY suggest places that are physically within 50 km of the city centre and open to the public. "
         "Return ONLY valid JSON."
     )
 
@@ -109,6 +113,8 @@ IMPORTANT RULES FOR PLACE NAMES:
 3. Include ALL well-known landmark attractions of {req.destination} — do not omit famous sights.
 4. Strictly NO generic temple/church/mosque names without specific local name and area.
 5. ATTRACTIONS ONLY — zero restaurants, zero cafes, zero meal stops.
+6. STRICTLY NO educational institutions: no colleges, no universities, no institutes, no schools.
+7. STRICTLY NO administrative buildings: no government offices, no hospitals, no banks.
 
 Traveller profile:
 - Budget: {req.budget.value}
@@ -144,7 +150,6 @@ Return ONLY this JSON:
 }}"""
 
     # temperature=0 → deterministic output; same inputs always produce the same candidates.
-    # This fixes the "different places every run" non-determinism observed in run 5.
     raw = await _call_groq(
         [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
         max_tokens=4096,
@@ -188,11 +193,10 @@ async def suggest_alternates_llm(
     When a candidate cannot be scheduled, ask Groq for shorter/alternative places
     that fit one of the currently FREE slots.
 
-    `free_slots` — ordered list of slot names that still have capacity
-    (e.g. ["evening", "night", "morning"]). When provided, the LLM is told
-    to target these slots specifically and to match their opening-hours
-    requirements. This prevents the classic failure where S5 alternates
-    all come back with '9am-5pm' OH while only evening/night slots are free.
+    `free_slots` — ordered list of slot names sorted by remaining capacity DESC
+    (e.g. ["evening", "morning", "afternoon"]). The first entry is the roomiest
+    slot and is used as the anchor example in the prompt, so the LLM generates
+    opening hours that match the most-available slot window.
 
     Intentionally uses temperature=0.3 (NOT 0) so alternates are diverse
     and different from the original S1 candidate set.
@@ -202,7 +206,7 @@ async def suggest_alternates_llm(
 
     # ── Build slot-awareness block ────────────────────────────────────────────
     if free_slots:
-        target_slot = free_slots[0]   # best available slot to anchor the example
+        target_slot = free_slots[0]   # roomiest slot — anchors the example
         slot_lines = []
         for fs in free_slots:
             win = _SLOT_WINDOWS.get(fs, ("?", "?"))
@@ -232,6 +236,8 @@ async def suggest_alternates_llm(
         "Suggest real, specifically-named TOURIST ATTRACTIONS only — no restaurants, no meals. "
         "Every suggestion must physically exist in or within 50 km of the destination city. "
         "NEVER use generic names like 'Vishnu Temple' without the specific local temple name. "
+        "NEVER suggest colleges, universities, institutes, schools, or any educational institutions. "
+        "NEVER suggest hospitals, banks, government offices, or administrative buildings. "
         "Pay close attention to opening hours — they MUST match the requested time slot. "
         "Return ONLY valid JSON."
     )
@@ -254,7 +260,7 @@ Suggest 3 alternative tourist attractions that:
 3. MUST fit in one of the available slots listed above — opening hours are CRITICAL.
 4. NOT already in the scheduled list above.
 5. MUST be real, specifically-named places in or within 50 km of {destination}.
-6. ATTRACTIONS ONLY — no restaurants, no hotels.
+6. ATTRACTIONS ONLY — no restaurants, no hotels, NO colleges, NO institutes.
 
 Return ONLY this JSON:
 {{
