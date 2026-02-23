@@ -7,7 +7,7 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
-header{background:linear-gradient(135deg,#1a1f2e,#252d3d);padding:18px 32px;border-bottom:1px solid #2d3748;display:flex;align-items:center;gap:12px}
+header{background:linear-gradient(135deg,#1a1f2e,#252d3d);padding:18px 32px;border-bottom:1px solid #2d3748;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 header h1{font-size:1.35rem;font-weight:700;color:#fff}
 .chip{font-size:.72rem;padding:2px 9px;border-radius:99px;font-weight:600}
 .status-bar{display:flex;align-items:center;gap:10px;padding:9px 32px;background:#161b27;border-bottom:1px solid #2d3748;font-size:.8rem}
@@ -20,12 +20,12 @@ header h1{font-size:1.35rem;font-weight:700;color:#fff}
 .tab{padding:11px 20px;cursor:pointer;font-size:.84rem;color:#64748b;border-bottom:2px solid transparent;white-space:nowrap;transition:.15s}
 .tab.active{color:#3b82f6;border-bottom-color:#3b82f6;font-weight:600}
 .tab:hover:not(.active){color:#94a3b8}
-main{padding:24px 32px;max-width:1000px}
+main{padding:24px 32px;max-width:1100px}
 .panel{display:none}.panel.active{display:block}
 .card{background:#1a1f2e;border:1px solid #2d3748;border-radius:12px;padding:22px;margin-bottom:18px}
 .card h2{font-size:.95rem;font-weight:600;margin-bottom:16px;color:#e2e8f0;display:flex;align-items:center;gap:7px}
 .fr{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
-.fr.s{grid-template-columns:1fr}.fr.t{grid-template-columns:1fr 1fr 1fr}
+.fr.s{grid-template-columns:1fr}.fr.t{grid-template-columns:1fr 1fr 1fr}.fr.q{grid-template-columns:1fr 1fr 1fr 1fr}
 label{font-size:.77rem;color:#94a3b8;display:block;margin-bottom:4px}
 input,select,textarea{width:100%;background:#0f1117;border:1px solid #334155;color:#e2e8f0;padding:8px 11px;border-radius:7px;font-size:.84rem;outline:none;transition:.2s}
 input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.12)}
@@ -34,58 +34,81 @@ input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2p
 .cbg input[type=checkbox]{width:auto;margin:0}
 .btn{background:#3b82f6;color:#fff;border:none;padding:9px 20px;border-radius:7px;cursor:pointer;font-size:.86rem;font-weight:600;display:inline-flex;align-items:center;gap:7px;transition:.2s}
 .btn:hover{background:#2563eb}.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-sm{padding:5px 12px;font-size:.76rem;border-radius:6px;border:none;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:4px;transition:.2s}
+.btn-green{background:#059669;color:#fff}.btn-green:hover{background:#047857}
+.btn-red{background:#dc2626;color:#fff}.btn-red:hover{background:#b91c1c}
+.btn-yellow{background:#d97706;color:#fff}.btn-yellow:hover{background:#b45309}
+.btn-purple{background:#7c3aed;color:#fff}.btn-purple:hover{background:#6d28d9}
+.btn-gray{background:#374151;color:#e2e8f0}.btn-gray:hover{background:#4b5563}
+.btn-outline{background:transparent;color:#3b82f6;border:1px solid #3b82f6}.btn-outline:hover{background:#1e3a5f}
 .result-box{margin-top:18px}
 .rmeta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .badge{font-size:.71rem;padding:3px 9px;border-radius:99px;font-weight:600}
 .ok{background:#064e3b;color:#34d399}.err{background:#450a0a;color:#f87171}
 .info{background:#1e3a5f;color:#93c5fd}.warn{background:#451a03;color:#fb923c}
-.alt{background:#3b1f6e;color:#c4b5fd}
+.alt{background:#3b1f6e;color:#c4b5fd}.pinned-badge{background:#065f46;color:#6ee7b7}
 .warn-banner{background:#451a03;border:1px solid #92400e;border-radius:7px;padding:9px 13px;margin-bottom:10px;font-size:.81rem;color:#fb923c}
-/* Day sections */
+.ok-banner{background:#064e3b;border:1px solid #065f46;border-radius:7px;padding:9px 13px;margin-bottom:10px;font-size:.81rem;color:#34d399}
+/* Day + slot layout */
 .day-section{margin-bottom:24px}
 .day-header{font-size:1rem;font-weight:700;color:#fff;padding:10px 14px;background:linear-gradient(135deg,#1e3a5f,#1e293b);border-radius:8px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
-/* Slot sections */
 .slot-section{margin-bottom:14px;border-left:3px solid #1e293b;padding-left:14px}
 .slot-header{font-size:.78rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;gap:8px}
-.slot-header.morning{color:#fbbf24;border-color:#fbbf24}
-.slot-header.afternoon{color:#34d399;border-color:#34d399}
-.slot-header.evening{color:#f97316;border-color:#f97316}
-.slot-header.night{color:#a78bfa;border-color:#a78bfa}
 /* Stop cards */
-.stop-card{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start;margin-bottom:7px}
+.stop-card{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start;margin-bottom:7px;position:relative}
 .stop-card.alt-card{border-color:#3b1f6e}
+.stop-card.pinned-card{border-color:#065f46}
 .stop-time-col{min-width:80px;text-align:center}
 .stop-time{color:#3b82f6;font-weight:700;font-size:.82rem;font-family:monospace}
 .stop-end-time{color:#475569;font-size:.7rem;font-family:monospace}
-.stop-body{flex:1}
+.stop-body{flex:1;min-width:0}
 .stop-name{font-weight:600;font-size:.9rem;color:#e2e8f0;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
 .stop-meta{font-size:.74rem;color:#64748b;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
 .stop-tip{font-size:.74rem;color:#94a3b8;margin-top:5px;font-style:italic}
 .stop-fee{font-size:.73rem;padding:2px 8px;border-radius:99px;background:#1e3a5f;color:#93c5fd;white-space:nowrap}
+.stop-actions{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
 .travel-row{font-size:.71rem;color:#475569;padding:4px 0 6px 14px;display:flex;align-items:center;gap:5px}
-/* Meal gap */
-.meal-gap{background:#1a1f2e;border:1px dashed #2d3748;border-radius:6px;padding:7px 14px;margin:8px 0;font-size:.77rem;color:#475569;display:flex;align-items:center;gap:8px;cursor:pointer;transition:.2s}
-.meal-gap:hover{border-color:#3b82f6;color:#93c5fd}
-/* Unscheduled */
+.meal-gap{background:#1a1f2e;border:1px dashed #2d3748;border-radius:6px;padding:7px 14px;margin:8px 0;font-size:.77rem;color:#475569;display:flex;align-items:center;gap:8px}
+/* Reorder list */
+.reorder-list{list-style:none;padding:0}
+.reorder-item{background:#0f1117;border:1px solid #1e293b;border-radius:7px;padding:9px 12px;margin-bottom:5px;display:flex;align-items:center;gap:9px;cursor:default}
+.reorder-item span{flex:1;font-size:.85rem}
+.reorder-arrows{display:flex;flex-direction:column;gap:2px}
+.arr-btn{background:#1e293b;border:none;color:#94a3b8;cursor:pointer;padding:2px 7px;border-radius:4px;font-size:.7rem;line-height:1.4}
+.arr-btn:hover{background:#334155;color:#fff}
+/* unsched */
 .unsched-section{background:#1a1f2e;border:1px solid #7c3aed33;border-radius:8px;padding:14px;margin-top:14px}
 .unsched-header{font-size:.82rem;font-weight:600;color:#a78bfa;margin-bottom:10px}
 .unsched-item{background:#0f1117;border:1px solid #2d3748;border-radius:6px;padding:9px 12px;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center}
-/* places/weather grids */
+/* places grid */
 .places-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
 .place-card{background:#0f1117;border:1px solid #1e293b;border-radius:7px;padding:12px}
 .place-name{font-weight:600;font-size:.86rem;margin-bottom:3px}
 .place-meta{font-size:.72rem;color:#64748b}
+/* enrich */
 .enrich-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
 .enrich-item{background:#0f1117;border:1px solid #1e293b;border-radius:7px;padding:9px 12px}
 .enrich-label{font-size:.69rem;color:#64748b;margin-bottom:3px;text-transform:uppercase;letter-spacing:.04em}
 .enrich-value{font-size:.86rem;color:#e2e8f0;font-weight:500}
+/* weather */
 .w-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px}
 .w-card{background:#0f1117;border:1px solid #1e293b;border-radius:7px;padding:11px;text-align:center}
+/* misc */
 .raw-toggle{font-size:.74rem;color:#3b82f6;cursor:pointer;margin-top:10px;display:inline-block}
 .raw-json{margin-top:7px;background:#0a0e18;border:1px solid #1e293b;border-radius:7px;padding:12px;font-family:monospace;font-size:.73rem;white-space:pre-wrap;color:#86efac;max-height:320px;overflow-y:auto;display:none}
 .spinner{width:13px;height:13px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
 @keyframes spin{to{transform:rotate(360deg)}}
 .empty{color:#475569;font-size:.84rem;text-align:center;padding:28px 0}
+.section-divider{border:none;border-top:1px solid #2d3748;margin:18px 0}
+/* modal overlay for swap */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:999;display:flex;align-items:center;justify-content:center}
+.modal{background:#1a1f2e;border:1px solid #334155;border-radius:12px;padding:24px;width:100%;max-width:480px;position:relative}
+.modal h3{font-size:.95rem;font-weight:700;margin-bottom:16px;color:#e2e8f0}
+.modal-close{position:absolute;top:12px;right:14px;background:transparent;border:none;color:#64748b;font-size:1.1rem;cursor:pointer}
+.modal-close:hover{color:#fff}
+/* id banner */
+.id-banner{background:#1e3a5f;border:1px solid #1d4ed8;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px;font-size:.82rem}
+.id-banner strong{color:#93c5fd;font-family:monospace;word-break:break-all}
 </style>
 </head>
 <body>
@@ -96,6 +119,7 @@ input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2p
   <span class="chip" style="background:#7c3aed">Groq</span>
   <span class="chip" style="background:#0f766e">Llama 3.3 70B</span>
   <span class="chip" style="background:#0f4c75">Smart Scheduler</span>
+  <span class="chip" style="background:#065f46">Customize ✨</span>
 </header>
 <div class="status-bar">
   <div id="dot"></div>
@@ -104,14 +128,17 @@ input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2p
 </div>
 <div class="tabs">
   <div class="tab active" onclick="tab(0)">&#128197; Itinerary</div>
-  <div class="tab" onclick="tab(1)">&#128205; Places</div>
-  <div class="tab" onclick="tab(2)">&#10024; Enrich</div>
-  <div class="tab" onclick="tab(3)">&#9925; Weather</div>
-  <div class="tab" onclick="tab(4)">&#128300; Raw</div>
+  <div class="tab" onclick="tab(1)">&#127775; Customize</div>
+  <div class="tab" onclick="tab(2)">&#128205; Places</div>
+  <div class="tab" onclick="tab(3)">&#10024; Enrich</div>
+  <div class="tab" onclick="tab(4)">&#9925; Weather</div>
+  <div class="tab" onclick="tab(5)">&#128300; Raw</div>
 </div>
 <main>
 
-<!-- TAB 0 -->
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- TAB 0 — GENERATE ITINERARY                         -->
+<!-- ═══════════════════════════════════════════════════ -->
 <div class="panel active" id="p0">
   <div class="card">
     <h2>&#128197; Generate Smart Itinerary</h2>
@@ -144,13 +171,149 @@ input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2p
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.84rem;color:#e2e8f0"><input type="checkbox" id="g-access" style="width:auto">Accessibility</label>
       </div>
     </div>
-    <button class="btn" id="gb" onclick="genItinerary()"><span id="gi">⚡</span> Generate</button>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn" id="gb" onclick="genItinerary()"><span id="gi">⚡</span> Generate</button>
+      <button class="btn btn-green" id="saveb" onclick="saveItinerary()" style="display:none"><span id="savei">💾</span> Save to Firebase</button>
+      <span id="saved-id" style="font-size:.78rem;color:#34d399"></span>
+    </div>
   </div>
   <div id="gr"></div>
 </div>
 
-<!-- TAB 1 -->
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- TAB 1 — CUSTOMIZE                                  -->
+<!-- ═══════════════════════════════════════════════════ -->
 <div class="panel" id="p1">
+
+  <!-- Header: User ID + Itinerary ID -->
+  <div class="card">
+    <h2>🔑 Auth & Target Itinerary</h2>
+    <div class="fr">
+      <div><label>Firebase User ID (X-User-Id) *</label><input id="c-uid" placeholder="e.g. abc123uid" value="test_user_01"/></div>
+      <div><label>Itinerary ID *</label><input id="c-iid" placeholder="Returned by Save → e.g. Xk92abc"/></div>
+    </div>
+    <p style="font-size:.76rem;color:#64748b;margin-top:4px">Generate + Save an itinerary in the Itinerary tab first, then paste the returned ID here.</p>
+  </div>
+
+  <!-- ── LOAD & PREVIEW ── -->
+  <div class="card">
+    <h2>📋 Load & Preview Itinerary</h2>
+    <button class="btn btn-outline" id="loadb" onclick="loadItinerary()"><span id="loadi">📋</span> Load Itinerary</button>
+    <div id="c-preview" style="margin-top:14px"></div>
+  </div>
+
+  <!-- ── SWAP STOP ── -->
+  <div class="card">
+    <h2>🔄 Swap a Stop</h2>
+    <div class="fr t">
+      <div><label>Day</label><input id="sw-day" type="number" value="1" min="1"/></div>
+      <div><label>Slot ID</label><input id="sw-slot" placeholder="e.g. day1_morning"/></div>
+      <div><label>Old Place Name *</label><input id="sw-old" placeholder="e.g. Marina Beach"/></div>
+    </div>
+    <p style="font-size:.76rem;color:#64748b;margin-bottom:10px">New Place to insert:</p>
+    <div class="fr">
+      <div><label>New Place Name *</label><input id="sw-name" placeholder="e.g. Elliot's Beach"/></div>
+      <div><label>Category</label><input id="sw-cat" placeholder="e.g. beach"/></div>
+    </div>
+    <div class="fr t">
+      <div><label>Duration (hrs)</label><input id="sw-dur" type="number" value="1.5" step="0.5"/></div>
+      <div><label>Best Slot</label><select id="sw-slot-pref"><option value="">Any</option><option value="morning">Morning</option><option value="afternoon">Afternoon</option><option value="evening">Evening</option><option value="night">Night</option></select></div>
+      <div><label>Entry Fee (₹)</label><input id="sw-fee" type="number" placeholder="0 = free"/></div>
+    </div>
+    <div class="fr s"><div><label>Opening Hours</label><input id="sw-oh" placeholder="e.g. 06:00-20:00"/></div></div>
+    <button class="btn btn-yellow" id="swapb" onclick="doSwap()"><span id="swapi">🔄</span> Swap Stop</button>
+  </div>
+
+  <!-- ── REMOVE STOP ── -->
+  <div class="card">
+    <h2>🗑️ Remove a Stop</h2>
+    <div class="fr t">
+      <div><label>Day</label><input id="rm-day" type="number" value="1" min="1"/></div>
+      <div><label>Slot ID</label><input id="rm-slot" placeholder="e.g. day1_morning"/></div>
+      <div><label>Place Name *</label><input id="rm-name" placeholder="e.g. Marina Beach"/></div>
+    </div>
+    <button class="btn btn-red" id="rmb" onclick="doRemove()"><span id="rmi">🗑️</span> Remove Stop</button>
+  </div>
+
+  <!-- ── ADD STOP ── -->
+  <div class="card">
+    <h2>➕ Add a New Stop</h2>
+    <div class="fr">
+      <div><label>Place Name *</label><input id="add-name" placeholder="e.g. Kapaleeshwarar Temple"/></div>
+      <div><label>Category</label><input id="add-cat" placeholder="e.g. temple"/></div>
+    </div>
+    <div class="fr q">
+      <div><label>Duration (hrs)</label><input id="add-dur" type="number" value="1.5" step="0.5"/></div>
+      <div><label>Preferred Slot</label><select id="add-slot"><option value="">Any</option><option value="morning">Morning</option><option value="afternoon">Afternoon</option><option value="evening">Evening</option><option value="night">Night</option></select></div>
+      <div><label>Preferred Day</label><input id="add-day" type="number" placeholder="optional" min="1"/></div>
+      <div><label>Entry Fee (₹)</label><input id="add-fee" type="number" placeholder="0 = free"/></div>
+    </div>
+    <div class="fr">
+      <div><label>Opening Hours</label><input id="add-oh" placeholder="e.g. 09:00-18:00"/></div>
+      <div><label>Why Must Visit</label><input id="add-why" placeholder="optional blurb"/></div>
+    </div>
+    <button class="btn btn-green" id="addb" onclick="doAdd()"><span id="addi">➕</span> Add Stop</button>
+  </div>
+
+  <!-- ── REORDER ── -->
+  <div class="card">
+    <h2>↕️ Reorder Day Stops</h2>
+    <div class="fr">
+      <div><label>Day to Reorder</label><input id="ro-day" type="number" value="1" min="1"/></div>
+      <div style="display:flex;align-items:flex-end"><button class="btn btn-outline" onclick="buildReorderList()">Build List</button></div>
+    </div>
+    <div id="ro-list" style="margin-top:12px"></div>
+    <button class="btn btn-purple" id="rob" onclick="doReorder()" style="margin-top:12px;display:none"><span id="roi">↕️</span> Apply Reorder</button>
+  </div>
+
+  <!-- ── PIN / UNPIN ── -->
+  <div class="card">
+    <h2>📌 Pin / Unpin a Stop</h2>
+    <div class="fr t">
+      <div><label>Day</label><input id="pin-day" type="number" value="1" min="1"/></div>
+      <div><label>Place Name *</label><input id="pin-name" placeholder="e.g. Kapaleeshwarar Temple"/></div>
+      <div><label>Action</label><select id="pin-action"><option value="true">📌 Pin</option><option value="false">🔓 Unpin</option></select></div>
+    </div>
+    <button class="btn btn-purple" id="pinb" onclick="doPin()"><span id="pini">📌</span> Apply</button>
+  </div>
+
+  <!-- ── SETTINGS PATCH ── -->
+  <div class="card">
+    <h2>⚙️ Patch Trip Settings</h2>
+    <p style="font-size:.76rem;color:#64748b;margin-bottom:12px">Only checked fields will be sent (exclude_unset).</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <label style="display:flex;align-items:center;gap:8px;background:#0f1117;border:1px solid #334155;border-radius:7px;padding:9px 12px;cursor:pointer">
+        <input type="checkbox" id="set-pace-chk" style="width:auto" onchange="toggleSet('pace')">
+        <span style="flex:1">Pace</span>
+        <select id="set-pace" disabled style="width:auto;min-width:100px"><option value="relaxed">Relaxed</option><option value="normal" selected>Normal</option><option value="fast">Fast</option></select>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;background:#0f1117;border:1px solid #334155;border-radius:7px;padding:9px 12px;cursor:pointer">
+        <input type="checkbox" id="set-budget-chk" style="width:auto" onchange="toggleSet('budget')">
+        <span style="flex:1">Budget</span>
+        <select id="set-budget" disabled style="width:auto;min-width:100px"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;background:#0f1117;border:1px solid #334155;border-radius:7px;padding:9px 12px;cursor:pointer">
+        <input type="checkbox" id="set-crowd-chk" style="width:auto" onchange="toggleSet('crowd')">
+        <span style="flex:1">Avoid Crowded</span>
+        <select id="set-crowd" disabled style="width:auto;min-width:100px"><option value="true">Yes</option><option value="false">No</option></select>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;background:#0f1117;border:1px solid #334155;border-radius:7px;padding:9px 12px;cursor:pointer">
+        <input type="checkbox" id="set-access-chk" style="width:auto" onchange="toggleSet('access')">
+        <span style="flex:1">Accessibility</span>
+        <select id="set-access" disabled style="width:auto;min-width:100px"><option value="true">Yes</option><option value="false">No</option></select>
+      </label>
+    </div>
+    <button class="btn" id="setb" onclick="doSettings()" style="margin-top:14px"><span id="seti">⚙️</span> Patch Settings</button>
+  </div>
+
+  <!-- ── RESULT ── -->
+  <div id="cr"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- TAB 2 — PLACES                                     -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="panel" id="p2">
   <div class="card">
     <h2>&#128205; Search Places</h2>
     <div class="fr">
@@ -163,8 +326,10 @@ input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2p
   <div id="spr"></div>
 </div>
 
-<!-- TAB 2 -->
-<div class="panel" id="p2">
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- TAB 3 — ENRICH                                     -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="panel" id="p3">
   <div class="card">
     <h2>&#10024; Enrich Place (Groq)</h2>
     <div class="fr">
@@ -176,8 +341,10 @@ input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2p
   <div id="epr"></div>
 </div>
 
-<!-- TAB 3 -->
-<div class="panel" id="p3">
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- TAB 4 — WEATHER                                    -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="panel" id="p4">
   <div class="card">
     <h2>&#9925; Weather Forecast</h2>
     <div class="fr">
@@ -189,14 +356,17 @@ input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2p
   <div id="wr"></div>
 </div>
 
-<!-- TAB 4 -->
-<div class="panel" id="p4">
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- TAB 5 — RAW                                        -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="panel" id="p5">
   <div class="card">
     <h2>&#128300; Raw API</h2>
     <div class="fr">
-      <div><label>Method</label><select id="rm"><option>GET</option><option selected>POST</option></select></div>
+      <div><label>Method</label><select id="rm"><option>GET</option><option selected>POST</option><option>PATCH</option></select></div>
       <div><label>Endpoint</label><input id="re" value="/api/itinerary/generate"/></div>
     </div>
+    <div class="fr s"><div><label>X-User-Id Header (for customize endpoints)</label><input id="raw-uid" placeholder="optional Firebase UID"/></div></div>
     <div class="fr s"><div><label>Body (JSON)</label><textarea id="rb" rows="8">{"destination":"Chennai","days":1,"budget":"medium","travel_type":"solo","mood":"cultural","interests":["temples","beach","food"]}</textarea></div></div>
     <button class="btn" id="rawb" onclick="rawReq()"><span id="rawi">🚀</span> Send</button>
   </div>
@@ -204,23 +374,39 @@ input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2p
 </div>
 
 </main>
+
 <script>
 const BASE=''
 const SLOT_ICONS={morning:'🌅',afternoon:'☀️',evening:'🌇',night:'🌙'}
 const SLOT_COLORS={morning:'fbbf24',afternoon:'34d399',evening:'f97316',night:'a78bfa'}
 
+// ── Global state ──────────────────────────────────────────────────
+let _lastItinerary=null   // raw response from /generate
+let _lastSavedId=null     // itinerary_id from /save
+let _loadedDoc=null       // loaded itinerary doc from Firestore
+
+// ── Tabs ──────────────────────────────────────────────────────────
 function tab(i){
   document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle('active',i===j))
   document.querySelectorAll('.panel').forEach((p,j)=>p.classList.toggle('active',i===j))
 }
+
+// ── Ping ──────────────────────────────────────────────────────────
 async function ping(){
   const dot=document.getElementById('dot'),txt=document.getElementById('stxt')
   dot.className='';txt.textContent='Pinging...'
-  try{const r=await fetch(BASE+'/health');const d=await r.json();dot.className='on';txt.textContent=`✅ Online — ${d.llm} | ${d.env}`}
-  catch{dot.className='';txt.textContent='❌ Offline — run: uvicorn main:app --reload'}
+  try{
+    const r=await fetch(BASE+'/health');const d=await r.json()
+    dot.className='on';txt.textContent=`✅ Online — ${d.llm} | ${d.env} | v${d.version}`
+  }catch{
+    dot.className='';txt.textContent='❌ Offline — run: uvicorn main:app --reload'
+  }
 }
+
+// ── Helpers ───────────────────────────────────────────────────────
 function setLoad(bid,iid,on,lbl=''){
   const b=document.getElementById(bid),ic=document.getElementById(iid)
+  if(!b)return
   b.disabled=on
   if(on){ic.className='spinner';ic.textContent=''}
   else{ic.className='';ic.textContent=lbl}
@@ -230,10 +416,23 @@ function meta(ok,ms,extras=''){
 }
 function rawToggle(id){
   const el=document.getElementById('rj-'+id)
-  el.style.display=el.style.display==='block'?'none':'block'
+  if(el)el.style.display=el.style.display==='block'?'none':'block'
+}
+function showResult(elId,html){document.getElementById(elId).innerHTML=html}
+function custHdr(){
+  const uid=document.getElementById('c-uid').value.trim()
+  const iid=document.getElementById('c-iid').value.trim()
+  if(!uid)throw new Error('Enter Firebase User ID')
+  if(!iid)throw new Error('Enter Itinerary ID')
+  return {uid,iid}
+}
+function toggleSet(k){
+  const m={pace:'set-pace',budget:'set-budget',crowd:'set-crowd',access:'set-access'}
+  const chk=document.getElementById(m[k]+'-chk'),sel=document.getElementById(m[k])
+  if(sel)sel.disabled=!chk.checked
 }
 
-// ===== GENERATE ITINERARY =====
+// ── GENERATE ITINERARY ────────────────────────────────────────────
 async function genItinerary(){
   const ints=[...document.querySelectorAll('.cbg input:checked')].map(c=>c.value)
   const body={
@@ -249,66 +448,85 @@ async function genItinerary(){
   }
   if(!body.destination){alert('Enter a destination');return}
   setLoad('gb','gi',true)
+  document.getElementById('saveb').style.display='none'
+  document.getElementById('saved-id').textContent=''
   const t0=Date.now()
   try{
     const r=await fetch(BASE+'/api/itinerary/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
     const d=await r.json();const ms=Date.now()-t0
     if(!r.ok)throw d
+    _lastItinerary=d
+    _lastSavedId=null
     renderItinerary(d,ms)
+    document.getElementById('saveb').style.display='inline-flex'
   }catch(e){
-    document.getElementById('gr').innerHTML=meta(false,Date.now()-t0)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
+    showResult('gr',meta(false,Date.now()-t0)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`)
   }finally{setLoad('gb','gi',false,'⚡ Generate')}
 }
 
-function renderItinerary(d,ms){
+async function saveItinerary(){
+  if(!_lastItinerary){alert('Generate first');return}
+  const uid=document.getElementById('c-uid').value.trim()||'test_user_01'
+  setLoad('saveb','savei',true)
+  try{
+    const r=await fetch(`${BASE}/api/itinerary/save?user_id=${encodeURIComponent(uid)}`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(_lastItinerary)
+    })
+    const d=await r.json()
+    if(!r.ok)throw d
+    _lastSavedId=d.itinerary_id
+    document.getElementById('c-iid').value=_lastSavedId
+    document.getElementById('saved-id').textContent=`✅ Saved: ${_lastSavedId}`
+    document.getElementById('c-uid').value=uid
+    // auto-switch to customize tab
+    tab(1)
+    loadItinerary()
+  }catch(e){
+    alert('Save failed: '+JSON.stringify(e.detail||e))
+  }finally{setLoad('saveb','savei',false,'💾 Save to Firebase')}
+}
+
+// ── RENDER ITINERARY ──────────────────────────────────────────────
+function renderItinerary(d,ms,container='gr'){
   const m=d.meta||{}
   let html=meta(true,ms,
-    `<span class="badge info">${m.total_places} places</span>`+
-    `<span class="badge info">🗺️ ${m.destination} • ${m.days}d</span>`+
+    `<span class="badge info">${m.total_places||''} places</span>`+
+    `<span class="badge info">🗺️ ${m.destination||''} • ${m.days||''}d</span>`+
     (m.unscheduled_count?`<span class="badge warn">⚠️ ${m.unscheduled_count} unscheduled</span>`:'')
   )
-
   if(d.weather_warnings?.length)
     d.weather_warnings.forEach(w=>html+=`<div class="warn-banner">${w}</div>`)
 
-  // Group by day
   const byDay={}
   ;(d.itinerary||[]).forEach(s=>{(byDay[s.day]=byDay[s.day]||[]).push(s)})
 
-  // Build slot_template lookup: slot_id -> meal_gap_after
   const slotInfo={}
-  ;(d.slot_template||[]).forEach(s=>{
-    slotInfo[s.slot_id]={meal_gap:s.meal_gap_after,remaining:s.remaining_mins}
-  })
+  ;(d.slot_template||[]).forEach(s=>{slotInfo[s.slot_id]={meal_gap:s.meal_gap_after,remaining:s.remaining_mins}})
 
   Object.entries(byDay).sort((a,b)=>+a[0]-+b[0]).forEach(([day,stops])=>{
     html+=`<div class="day-section"><div class="day-header">🗓️ Day ${day}</div>`
-
-    // Group by slot
     const bySlot={}
     stops.forEach(s=>{(bySlot[s.slot_name]=bySlot[s.slot_name]||[]).push(s)})
     const slotOrder=['morning','afternoon','evening','night']
-
     slotOrder.forEach(sn=>{
-      const slotStops=bySlot[sn]
-      // Meal gap BEFORE this slot (from previous slot's meal_gap_after)
       const prevIdx=slotOrder.indexOf(sn)-1
       if(prevIdx>=0){
-        const prevSlotId=`day${day}_${slotOrder[prevIdx]}`
-        const gap=slotInfo[prevSlotId]?.meal_gap
-        if(gap) html+=`<div class="meal-gap" onclick="void(0)">🍽️ ${gap} <span style="margin-left:auto;font-size:.68rem;color:#3b82f6">+ Add meal</span></div>`
+        const gapId=`day${day}_${slotOrder[prevIdx]}`
+        const gap=slotInfo[gapId]?.meal_gap
+        if(gap)html+=`<div class="meal-gap">🍽️ ${gap}</div>`
       }
-
-      if(!slotStops?.length) return
-      const ic=SLOT_ICONS[sn]||''
+      const slotStops=bySlot[sn]
+      if(!slotStops?.length)return
       const col=SLOT_COLORS[sn]||'94a3b8'
-      html+=`<div class="slot-section"><div class="slot-header ${sn}" style="border-left:3px solid #${col};padding-left:10px">${ic} ${sn.toUpperCase()}</div>`
-
+      html+=`<div class="slot-section"><div class="slot-header" style="border-left:3px solid #${col};padding-left:10px">${SLOT_ICONS[sn]||''} ${sn.toUpperCase()}</div>`
       slotStops.forEach((s,idx)=>{
         if(idx>0&&s.travel_mins_from_prev>0)
           html+=`<div class="travel-row">🚗 ${s.travel_mins_from_prev} min travel</div>`
         const fee=s.entry_fee===0?'Free':(s.entry_fee?`₹${s.entry_fee}`:'')
-        html+=`<div class="stop-card${s.is_alternate?' alt-card':''}">
+        const isPinned=s.pinned
+        html+=`<div class="stop-card${s.is_alternate?' alt-card':''}${isPinned?' pinned-card':''}">
           <div class="stop-time-col">
             <div class="stop-time">${s.start_time}</div>
             <div class="stop-end-time">${s.end_time}</div>
@@ -317,13 +535,14 @@ function renderItinerary(d,ms){
           <div class="stop-body">
             <div class="stop-name">
               ${s.place_name}
+              ${isPinned?'<span class="badge pinned-badge">📌 pinned</span>':''}
               ${s.is_alternate?'<span class="badge alt">alt</span>':''}
               ${s.priority>=5?'<span class="badge warn">⭐must</span>':''}
             </div>
             <div class="stop-meta">
               ${s.category?`<span>🏷️ ${s.category}</span>`:''}
               ${s.lat?`<span>📍 ${s.lat?.toFixed(3)},${s.lon?.toFixed(3)}</span>`:''}
-              ${s.why_must_visit?`<span style="color:#94a3b8">${s.why_must_visit}</span>`:''}
+              ${s.opening_hours?`<span>⏰ ${s.opening_hours}</span>`:''}
             </div>
             ${s.tip?`<div class="stop-tip">💡 ${s.tip}</div>`:''}
           </div>
@@ -335,23 +554,258 @@ function renderItinerary(d,ms){
     html+='</div>'
   })
 
-  // Unscheduled section
   if(d.unscheduled?.length){
-    html+=`<div class="unsched-section"><div class="unsched-header">⚠️ ${d.unscheduled.length} places couldn't be scheduled (slot full / conflict)</div>`
+    html+=`<div class="unsched-section"><div class="unsched-header">⚠️ ${d.unscheduled.length} unscheduled</div>`
     d.unscheduled.forEach(u=>{
-      html+=`<div class="unsched-item">
-        <div><strong style="font-size:.86rem">${u.place_name}</strong><span style="color:#64748b;font-size:.74rem;margin-left:8px">${u.category||''} • ${u.duration_hrs}h • pref: ${u.best_slot||'any'}</span></div>
-        <span class="badge warn">unscheduled</span>
-      </div>`
+      html+=`<div class="unsched-item"><div><strong style="font-size:.86rem">${u.place_name}</strong><span style="color:#64748b;font-size:.74rem;margin-left:8px">${u.category||''} • ${u.duration_hrs}h</span></div><span class="badge warn">unscheduled</span></div>`
     })
     html+='</div>'
   }
-
   html+=`<span class="raw-toggle" onclick="rawToggle('gen')">{ } Raw JSON</span><div class="raw-json" id="rj-gen">${JSON.stringify(d,null,2)}</div>`
-  document.getElementById('gr').innerHTML=html
+  showResult(container,html)
 }
 
-// ===== SEARCH PLACES =====
+// ── CUSTOMIZE: LOAD ───────────────────────────────────────────────
+async function loadItinerary(){
+  let uid,iid
+  try{{const h=custHdr();uid=h.uid;iid=h.iid}}catch(e){alert(e.message);return}
+  setLoad('loadb','loadi',true)
+  const t0=Date.now()
+  try{
+    const r=await fetch(`${BASE}/api/itinerary/${iid}`,{headers:{'X-User-Id':uid}})
+    const d=await r.json();const ms=Date.now()-t0
+    if(!r.ok)throw d
+    _loadedDoc=d.itinerary||d
+    showResult('cr','')
+    // Render a read-only preview in the customize tab
+    const previewData={meta:_loadedDoc.meta,itinerary:_loadedDoc.itinerary||[],slot_template:_loadedDoc.slot_template||[]}
+    let html=`<div class="id-banner">📄 Loaded: <strong>${iid}</strong></div>`
+    html+=renderStopsPreview(previewData)
+    showResult('c-preview',html)
+    // Auto-fill day inputs
+    const firstDay=(_loadedDoc.itinerary||[])[0]?.day||1
+    ;['sw-day','rm-day','ro-day','pin-day'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=firstDay})
+  }catch(e){
+    showResult('c-preview',meta(false,Date.now()-t0)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`)
+  }finally{setLoad('loadb','loadi',false,'📋 Load Itinerary')}
+}
+
+function renderStopsPreview(d){
+  const byDay={}
+  ;(d.itinerary||[]).forEach(s=>{(byDay[s.day]=byDay[s.day]||[]).push(s)})
+  let html=''
+  Object.entries(byDay).sort((a,b)=>+a[0]-+b[0]).forEach(([day,stops])=>{
+    html+=`<div class="day-section"><div class="day-header">🗓️ Day ${day}</div>`
+    stops.forEach(s=>{
+      const isPinned=s.pinned
+      const fee=s.entry_fee===0?'Free':(s.entry_fee?`₹${s.entry_fee}`:'')
+      html+=`<div class="stop-card${isPinned?' pinned-card':''}">
+        <div class="stop-time-col">
+          <div class="stop-time">${s.start_time||'--'}</div>
+          <div class="stop-end-time">${s.end_time||''}</div>
+          <div style="font-size:.65rem;color:#475569">${s.duration_hrs}h</div>
+        </div>
+        <div class="stop-body">
+          <div class="stop-name">
+            ${s.place_name}
+            ${isPinned?'<span class="badge pinned-badge">📌 pinned</span>':''}
+          </div>
+          <div class="stop-meta">
+            ${s.slot_id?`<span style="font-family:monospace;font-size:.71rem;color:#3b82f6">${s.slot_id}</span>`:''}
+            ${s.category?`<span>🏷️ ${s.category}</span>`:''}
+            ${s.opening_hours?`<span>⏰ ${s.opening_hours}</span>`:''}
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <button class="btn-sm btn-yellow" onclick="prefillSwap(${day},'${s.slot_id}','${s.place_name.replace(/'/g,"\\'")}')">🔄 Swap</button>
+          <button class="btn-sm btn-red" onclick="prefillRemove(${day},'${s.slot_id}','${s.place_name.replace(/'/g,"\\'")}')">🗑️ Remove</button>
+          <button class="btn-sm ${isPinned?'btn-gray':'btn-purple'}" onclick="prefillPin(${day},'${s.place_name.replace(/'/g,"\\'")}',${ !isPinned })">📌 ${isPinned?'Unpin':'Pin'}</button>
+        </div>
+        ${fee?`<span class="stop-fee">${fee}</span>`:''}
+      </div>`
+    })
+    html+='</div>'
+  })
+  return html
+}
+
+// Quick-fill helpers from preview click
+function prefillSwap(day,slotId,name){
+  document.getElementById('sw-day').value=day
+  document.getElementById('sw-slot').value=slotId
+  document.getElementById('sw-old').value=name
+  document.getElementById('sw-name').focus()
+}
+function prefillRemove(day,slotId,name){
+  document.getElementById('rm-day').value=day
+  document.getElementById('rm-slot').value=slotId
+  document.getElementById('rm-name').value=name
+}
+function prefillPin(day,name,pin){
+  document.getElementById('pin-day').value=day
+  document.getElementById('pin-name').value=name
+  document.getElementById('pin-action').value=String(pin)
+}
+
+// ── CUSTOMIZE: SWAP ───────────────────────────────────────────────
+async function doSwap(){
+  let uid,iid
+  try{{const h=custHdr();uid=h.uid;iid=h.iid}}catch(e){alert(e.message);return}
+  const oldName=document.getElementById('sw-old').value.trim()
+  const newName=document.getElementById('sw-name').value.trim()
+  if(!oldName||!newName){alert('Fill old and new place names');return}
+  const body={
+    day:+document.getElementById('sw-day').value,
+    slot_id:document.getElementById('sw-slot').value.trim(),
+    old_place_name:oldName,
+    new_place:{
+      place_name:newName,
+      category:document.getElementById('sw-cat').value.trim()||null,
+      duration_hrs:+document.getElementById('sw-dur').value||1.5,
+      best_slot:document.getElementById('sw-slot-pref').value||null,
+      entry_fee:document.getElementById('sw-fee').value!==''?+document.getElementById('sw-fee').value:null,
+      opening_hours:document.getElementById('sw-oh').value.trim()||null
+    }
+  }
+  await custAction('swapb','swapi','🔄 Swap Stop',`/api/customize/${iid}/swap`,uid,body,'Swap')
+}
+
+// ── CUSTOMIZE: REMOVE ─────────────────────────────────────────────
+async function doRemove(){
+  let uid,iid
+  try{{const h=custHdr();uid=h.uid;iid=h.iid}}catch(e){alert(e.message);return}
+  const name=document.getElementById('rm-name').value.trim()
+  if(!name){alert('Enter place name to remove');return}
+  const body={
+    day:+document.getElementById('rm-day').value,
+    slot_id:document.getElementById('rm-slot').value.trim(),
+    place_name:name
+  }
+  await custAction('rmb','rmi','🗑️ Remove Stop',`/api/customize/${iid}/remove`,uid,body,'Remove')
+}
+
+// ── CUSTOMIZE: ADD ────────────────────────────────────────────────
+async function doAdd(){
+  let uid,iid
+  try{{const h=custHdr();uid=h.uid;iid=h.iid}}catch(e){alert(e.message);return}
+  const name=document.getElementById('add-name').value.trim()
+  if(!name){alert('Enter place name to add');return}
+  const prefDay=document.getElementById('add-day').value
+  const body={
+    new_place:{
+      place_name:name,
+      category:document.getElementById('add-cat').value.trim()||null,
+      duration_hrs:+document.getElementById('add-dur').value||1.5,
+      best_slot:document.getElementById('add-slot').value||null,
+      entry_fee:document.getElementById('add-fee').value!==''?+document.getElementById('add-fee').value:null,
+      opening_hours:document.getElementById('add-oh').value.trim()||null,
+      why_must_visit:document.getElementById('add-why').value.trim()||null
+    },
+    preferred_day:prefDay?+prefDay:null
+  }
+  await custAction('addb','addi','➕ Add Stop',`/api/customize/${iid}/add`,uid,body,'Add')
+}
+
+// ── CUSTOMIZE: REORDER ────────────────────────────────────────────
+function buildReorderList(){
+  if(!_loadedDoc){alert('Load an itinerary first');return}
+  const day=+document.getElementById('ro-day').value
+  const dayStops=(_loadedDoc.itinerary||[]).filter(s=>s.day===day)
+  if(!dayStops.length){alert(`No stops on day ${day}`);return}
+  let html='<ul class="reorder-list" id="ro-ul">'
+  dayStops.sort((a,b)=>a.start_time.localeCompare(b.start_time)).forEach((s,i)=>{
+    html+=`<li class="reorder-item" id="roi-${i}" data-name="${s.place_name.replace(/"/g,'&quot;')}">
+      <div class="reorder-arrows">
+        <button class="arr-btn" onclick="roMove(${i},-1)">▲</button>
+        <button class="arr-btn" onclick="roMove(${i},1)">▼</button>
+      </div>
+      <span>${s.place_name} ${s.pinned?'📌':''}</span>
+      <span style="font-size:.71rem;color:#3b82f6;font-family:monospace">${s.slot_name} ${s.start_time}</span>
+    </li>`
+  })
+  html+='</ul>'
+  document.getElementById('ro-list').innerHTML=html
+  document.getElementById('rob').style.display='inline-flex'
+}
+function roMove(idx,dir){
+  const ul=document.getElementById('ro-ul')
+  const items=[...ul.querySelectorAll('li')]
+  const target=idx+dir
+  if(target<0||target>=items.length)return
+  const ref=items[target]
+  if(dir===-1)ul.insertBefore(items[idx],ref)
+  else ul.insertBefore(ref,items[idx])
+}
+async function doReorder(){
+  let uid,iid
+  try{{const h=custHdr();uid=h.uid;iid=h.iid}}catch(e){alert(e.message);return}
+  const ul=document.getElementById('ro-ul')
+  if(!ul){alert('Build the list first');return}
+  const names=[...ul.querySelectorAll('li')].map(li=>li.dataset.name)
+  const body={day:+document.getElementById('ro-day').value,new_order_place_names:names}
+  await custAction('rob','roi','↕️ Apply Reorder',`/api/customize/${iid}/reorder`,uid,body,'Reorder')
+}
+
+// ── CUSTOMIZE: PIN ────────────────────────────────────────────────
+async function doPin(){
+  let uid,iid
+  try{{const h=custHdr();uid=h.uid;iid=h.iid}}catch(e){alert(e.message);return}
+  const name=document.getElementById('pin-name').value.trim()
+  if(!name){alert('Enter place name');return}
+  const body={
+    day:+document.getElementById('pin-day').value,
+    place_name:name,
+    pinned:document.getElementById('pin-action').value==='true'
+  }
+  await custAction('pinb','pini','📌 Apply',`/api/customize/${iid}/pin`,uid,body,'Pin')
+}
+
+// ── CUSTOMIZE: SETTINGS ───────────────────────────────────────────
+async function doSettings(){
+  let uid,iid
+  try{{const h=custHdr();uid=h.uid;iid=h.iid}}catch(e){alert(e.message);return}
+  const body={}
+  if(document.getElementById('set-pace-chk').checked)  body.pace=document.getElementById('set-pace').value
+  if(document.getElementById('set-budget-chk').checked) body.budget=document.getElementById('set-budget').value
+  if(document.getElementById('set-crowd-chk').checked)  body.avoid_crowded=document.getElementById('set-crowd').value==='true'
+  if(document.getElementById('set-access-chk').checked) body.accessibility_needs=document.getElementById('set-access').value==='true'
+  if(!Object.keys(body).length){alert('Check at least one setting');return}
+  await custAction('setb','seti','⚙️ Patch Settings',`/api/customize/${iid}/settings`,uid,body,'Settings','PATCH')
+}
+
+// ── CUSTOMIZE: SHARED ACTION ──────────────────────────────────────
+async function custAction(bid,iid_el,resetLabel,endpoint,uid,body,opName,method='POST'){
+  setLoad(bid,iid_el,true)
+  const t0=Date.now()
+  try{
+    const r=await fetch(BASE+endpoint,{
+      method,
+      headers:{'Content-Type':'application/json','X-User-Id':uid},
+      body:JSON.stringify(body)
+    })
+    const d=await r.json();const ms=Date.now()-t0
+    if(!r.ok)throw d
+    // Update loaded doc state
+    if(d.itinerary) _loadedDoc={..._loadedDoc,itinerary:d.itinerary}
+    if(d.meta)      _loadedDoc={..._loadedDoc,meta:d.meta}
+    // Re-render preview
+    if(d.itinerary){
+      const previewData={meta:_loadedDoc.meta,itinerary:_loadedDoc.itinerary,slot_template:_loadedDoc.slot_template||[]}
+      let ph=`<div class="id-banner">📄 Loaded: <strong>${document.getElementById('c-iid').value.trim()}</strong></div>`
+      ph+=renderStopsPreview(previewData)
+      showResult('c-preview',ph)
+    }
+    let rhtml=meta(true,ms,`<span class="badge info">${opName} ✅</span>`)
+    if(d.applied) rhtml+=`<div class="ok-banner">Applied: ${JSON.stringify(d.applied)}</div>`
+    if(d.placed_stop) rhtml+=`<div class="ok-banner">Placed: ${d.placed_stop.place_name} @ ${d.placed_stop.slot_id} ${d.placed_stop.start_time}</div>`
+    rhtml+=`<span class="raw-toggle" onclick="rawToggle('cr')">{ } Raw JSON</span><div class="raw-json" id="rj-cr">${JSON.stringify(d,null,2)}</div>`
+    showResult('cr',rhtml)
+  }catch(e){
+    showResult('cr',meta(false,Date.now()-t0,`<span class="badge err">${opName}</span>`)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`)
+  }finally{setLoad(bid,iid_el,false,resetLabel)}
+}
+
+// ── SEARCH PLACES ─────────────────────────────────────────────────
 async function searchPlaces(){
   const dest=document.getElementById('sp-d').value.trim()
   const cat=document.getElementById('sp-c').value
@@ -371,13 +825,13 @@ async function searchPlaces(){
       html+='</div>'
     }
     html+=`<span class="raw-toggle" onclick="rawToggle('sp')">{ } Raw JSON</span><div class="raw-json" id="rj-sp">${JSON.stringify(d,null,2)}</div>`
-    document.getElementById('spr').innerHTML=html
+    showResult('spr',html)
   }catch(e){
-    document.getElementById('spr').innerHTML=meta(false,Date.now()-t0)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
+    showResult('spr',meta(false,Date.now()-t0)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`)
   }finally{setLoad('spb','spi',false,'🔍 Search')}
 }
 
-// ===== ENRICH PLACE =====
+// ── ENRICH ────────────────────────────────────────────────────────
 async function enrichPlace(){
   const name=document.getElementById('ep-n').value.trim()
   const city=document.getElementById('ep-c').value.trim()
@@ -397,13 +851,13 @@ async function enrichPlace(){
       html+=`<div class="enrich-item"><div class="enrich-label">${l}</div><div class="enrich-value">${val}</div></div>`
     })
     html+=`</div><span class="raw-toggle" onclick="rawToggle('ep')">{ } Raw JSON</span><div class="raw-json" id="rj-ep">${JSON.stringify(d,null,2)}</div>`
-    document.getElementById('epr').innerHTML=html
+    showResult('epr',html)
   }catch(e){
-    document.getElementById('epr').innerHTML=meta(false,Date.now()-t0)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
+    showResult('epr',meta(false,Date.now()-t0)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`)
   }finally{setLoad('epb','epi',false,'✨ Enrich')}
 }
 
-// ===== WEATHER =====
+// ── WEATHER ───────────────────────────────────────────────────────
 async function getWeather(){
   const city=document.getElementById('wc').value.trim()
   const days=document.getElementById('wd').value
@@ -427,29 +881,33 @@ async function getWeather(){
           ${f.warning?'<div style="font-size:.68rem;color:#fb923c;margin-top:5px">⚠️</div>':''}
         </div>`
       })
-      html+=`</div>`
+      html+='</div>'
     }
     html+=`<span class="raw-toggle" onclick="rawToggle('w')">{ } Raw JSON</span><div class="raw-json" id="rj-w">${JSON.stringify(d,null,2)}</div>`
-    document.getElementById('wr').innerHTML=html
+    showResult('wr',html)
   }catch(e){
-    document.getElementById('wr').innerHTML=meta(false,Date.now()-t0)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`
+    showResult('wr',meta(false,Date.now()-t0)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`)
   }finally{setLoad('wb','wi',false,'⛅ Forecast')}
 }
 
-// ===== RAW =====
+// ── RAW ───────────────────────────────────────────────────────────
 async function rawReq(){
-  const m=document.getElementById('rm').value,e=document.getElementById('re').value.trim(),b=document.getElementById('rb').value.trim()
+  const m=document.getElementById('rm').value
+  const e=document.getElementById('re').value.trim()
+  const b=document.getElementById('rb').value.trim()
+  const rawUid=document.getElementById('raw-uid').value.trim()
   setLoad('rawb','rawi',true)
   const t0=Date.now()
   try{
     const opts={method:m,headers:{}}
-    if(['POST','PUT'].includes(m)&&b){opts.headers['Content-Type']='application/json';opts.body=b}
+    if(rawUid) opts.headers['X-User-Id']=rawUid
+    if(['POST','PUT','PATCH'].includes(m)&&b){opts.headers['Content-Type']='application/json';opts.body=b}
     const r=await fetch(BASE+e,opts);const d=await r.json();const ms=Date.now()-t0
     let html=meta(r.ok,ms,`<span class="badge info">HTTP ${r.status}</span>`)
     html+=`<div class="raw-json" style="display:block">${JSON.stringify(d,null,2)}</div>`
-    document.getElementById('rawr').innerHTML=html
+    showResult('rawr',html)
   }catch(e2){
-    document.getElementById('rawr').innerHTML=meta(false,Date.now()-t0)+`<div class="warn-banner">${e2.message}</div>`
+    showResult('rawr',meta(false,Date.now()-t0)+`<div class="warn-banner">${e2.message}</div>`)
   }finally{setLoad('rawb','rawi',false,'🚀 Send')}
 }
 
