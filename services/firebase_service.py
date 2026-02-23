@@ -59,6 +59,48 @@ async def get_itinerary(itinerary_id: str) -> Optional[dict]:
     return None
 
 
+async def get_itinerary_by_id_for_user(user_id: str, itinerary_id: str) -> Optional[dict]:
+    """
+    Fetch a specific itinerary owned by user_id.
+    Uses the scoped sub-collection path so it never returns another user's doc.
+    Returns None if not found or Firebase unavailable.
+    """
+    db = get_db()
+    if not db:
+        return None
+    doc_ref = (
+        db.collection("users")
+          .document(user_id)
+          .collection("itineraries")
+          .document(itinerary_id)
+    )
+    snap = doc_ref.get()
+    if not snap.exists:
+        return None
+    return {"id": snap.id, **snap.to_dict()}
+
+
+async def update_itinerary(user_id: str, itinerary_id: str, fields: dict) -> None:
+    """
+    Partial-update (merge) an itinerary document.
+    `fields` is a dict of top-level keys to update — untouched keys remain.
+    Automatically appends updated_at timestamp.
+    """
+    db = get_db()
+    if not db:
+        raise RuntimeError("Firebase not configured.")
+    doc_ref = (
+        db.collection("users")
+          .document(user_id)
+          .collection("itineraries")
+          .document(itinerary_id)
+    )
+    doc_ref.update({
+        **fields,
+        "updated_at": datetime.utcnow().isoformat()
+    })
+
+
 async def get_user_itineraries(user_id: str) -> List[dict]:
     from firebase_admin import firestore as fs
     db = get_db()

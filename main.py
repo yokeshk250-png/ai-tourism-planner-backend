@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from routes import itinerary, places, weather
+from routes import customize
 import logging
 import time
 import os
@@ -25,7 +26,7 @@ app = FastAPI(
     description="""Backend API for AI-powered tourism itinerary planning.
     Uses **Groq llama-3.3-70b-versatile** for fast itinerary generation (free tier),
     **Foursquare/Geoapify** for POI data, and **Firebase** for user storage.""",
-    version="2.2.0",
+    version="2.3.0",
     contact={
         "name": "AI Tourism Planner",
         "url": "https://github.com/yokeshk250-png/ai-tourism-planner-backend"
@@ -69,9 +70,10 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"success": False, "error": "Internal server error", "detail": str(exc)}
     )
 
-app.include_router(itinerary.router, prefix="/api/itinerary", tags=["Itinerary"])
-app.include_router(places.router,    prefix="/api/places",    tags=["Places"])
-app.include_router(weather.router,   prefix="/api/weather",   tags=["Weather"])
+app.include_router(itinerary.router,  prefix="/api/itinerary",  tags=["Itinerary"])
+app.include_router(places.router,     prefix="/api/places",     tags=["Places"])
+app.include_router(weather.router,    prefix="/api/weather",    tags=["Weather"])
+app.include_router(customize.router,  prefix="/api/customize",  tags=["Customize"])
 
 @app.get("/test", tags=["Test"], include_in_schema=False)
 async def serve_test_frontend():
@@ -82,7 +84,7 @@ async def serve_test_frontend():
 async def root():
     return {
         "message": "AI Tourism Planner API 🗺️",
-        "version": "2.2.0",
+        "version": "2.3.0",
         "llm": "Groq llama-3.3-70b-versatile (free)",
         "docs": "/docs",
         "test_ui": "/test"
@@ -90,10 +92,11 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    return {"status": "healthy", "version": "2.2.0", "llm": "groq/llama-3.3-70b-versatile", "env": APP_ENV}
+    return {"status": "healthy", "version": "2.3.0", "llm": "groq/llama-3.3-70b-versatile", "env": APP_ENV}
 
 @app.on_event("startup")
 async def on_startup():
-    logger.info(f"AI Tourism Planner API v2.2.0 🚀 [{APP_ENV}]")
+    logger.info(f"AI Tourism Planner API v2.3.0 🚀 [{APP_ENV}]")
     logger.info("LLM: Groq llama-3.3-70b-versatile (FREE 14,400 req/day)")
+    logger.info("Customize: /api/customize/{id}/swap|remove|add|reorder|pin|settings")
     logger.info("Test UI: http://localhost:8000/test")
