@@ -44,6 +44,17 @@ TRAVEL_SPEED_KMPH   = 20
 TRAVEL_BUFFER_MINS  = 10
 DEFAULT_TRAVEL_MINS = 15
 
+# Sentinel keywords that indicate the LLM embedded reasoning into a place name.
+# Any candidate whose place_name contains one of these (case-insensitive) is
+# treated as invalid and dropped before scheduling.
+_INVALID_NAME_PHRASES = [
+    "skipping",
+    "not a specific",
+    "ambiguous",
+    "unknown place",
+    "n/a",
+]
+
 
 # ─────────────────────────────────────────────────────────────
 # Opening hours parser
@@ -274,6 +285,37 @@ def is_open_for_slot(
     return (None, f"Unparseable hours: {opening_hours!r:.60}", None)
 
 
+def _slot_has_any_overlap(oh_str: Optional[str], slot_start_mins: int, slot_end_mins: int) -> bool:
+    """
+    Returns True if the slot window [slot_start_mins, slot_end_mins) has ANY
+    temporal overlap with the place's open sessions.
+
+    Used as a Pass 2 guard: even in relaxed mode we hard-skip slots that are
+    entirely outside the place's operating hours (e.g. night slot 20:00-21:30
+    for a place that closes at 18:00). Only slots with at least some overlap
+    are allowed through, and the result is marked opening_hours_unverified.
+
+    If oh_str is None or unparseable, returns True (lenient — no data means
+    we cannot rule it out).
+    """
+    if not oh_str:
+        return True
+
+    low = oh_str.lower().replace(" ", "")
+    if low in ("24/7", "open24hrs", "open24hours", "open24h", "alwaysopen", "open24"):
+        return True
+
+    sessions = _parse_sessions(oh_str)
+    if not sessions:
+        return True  # unparseable — lenient
+
+    # Overlap condition: slot_start < session_close AND slot_end > session_open
+    for o, c in sessions:
+        if slot_start_mins < c and slot_end_mins > o:
+            return True
+    return False
+
+
 # ─────────────────────────────────────────────────────────────
 # Pre-schedule: validate & auto-correct best_slot vs opening hours
 # ─────────────────────────────────────────────────────────────
@@ -302,23 +344,59 @@ def _first_valid_slot(opening_hours: str, duration_mins: int) -> Optional[str]:
     return None
 
 
+def _is_bad_place_name(name: str) -> bool:
+    """
+    Detect LLM-generated garbage place names where the model embedded its own
+    reasoning / rejection commentary into the place_name field.
+
+    Examples caught:
+      'Subrahmanya Temple, not a specific enough name, skipping'
+      'Unknown place, ambiguous'
+      'N/A'
+
+    Returns True if the name should be treated as invalid and dropped.
+    """
+    if not name or not name.strip():
+        return True
+    name_lower = name.lower()
+    for phrase in _INVALID_NAME_PHRASES:
+        if phrase in name_lower:
+            return True
+    # Names longer than 120 chars are almost certainly LLM commentary
+    if len(name) > 120:
+        return True
+    return False
+
+
 def validate_candidate_slots(candidates: list) -> list:
+    valid = []
     for cand in candidates:
-        name     = cand.get("place_name", "?")
+        name = cand.get("place_name", "") or ""
+
+        # ─ Drop garbage LLM names before any scheduling logic ────────────────
+        if _is_bad_place_name(name):
+            logger.warning(
+                f"[validate] dropping invalid place_name: {name!r:.80}"
+            )
+            continue  # skip entirely — do not add to valid list
+
         oh_str   = cand.get("opening_hours") or ""
         pref     = (cand.get("best_slot") or "morning").lower()
         dur_mins = int(float(cand.get("duration_hrs", 1.0)) * 60)
 
         if not oh_str.strip():
+            valid.append(cand)
             continue
 
         low = oh_str.lower().replace(" ", "")
         if low in ("24/7", "open24hrs", "open24hours", "open24h", "alwaysopen", "open24"):
+            valid.append(cand)
             continue
 
         sessions = _parse_sessions(oh_str)
         if not sessions:
             logger.debug(f"[validate] '{name}': unparseable hours — keeping best_slot")
+            valid.append(cand)
             continue
 
         s_mins, e_mins = _SLOT_WINDOWS.get(pref, _SLOT_WINDOWS["morning"])
@@ -329,6 +407,7 @@ def validate_candidate_slots(candidates: list) -> list:
 
         if slot_ok:
             logger.debug(f"[validate] '{name}': best_slot='{pref}' ✔️")
+            valid.append(cand)
             continue
 
         corrected = _first_valid_slot(oh_str, dur_mins)
@@ -343,7 +422,9 @@ def validate_candidate_slots(candidates: list) -> list:
             logger.warning(f"[validate] '{name}': NO slot fits — flagged hours_conflict")
             cand["hours_conflict"] = True
 
-    return candidates
+        valid.append(cand)
+
+    return valid
 
 
 # ─────────────────────────────────────────────────────────────
@@ -455,6 +536,9 @@ def _fits_in_slot_v2(
       - ignore_oh_check=True (Pass 2 relaxed scheduling — best-effort
         placement when all strict slots are full; output is flagged as
         opening_hours_unverified so the UI can warn the user)
+
+    Note: Pass 2 also runs _slot_has_any_overlap() BEFORE calling this
+    function to ensure the slot is not entirely outside open hours.
     """
     actual_t   = _actual_travel(slot, travel_mins)
     cursor     = slot["last_end_mins"]
@@ -562,6 +646,7 @@ def schedule_candidates(
 
     PASS 1 — Strict (original behaviour):
       Step 0: validate_candidate_slots() — pre-correct best_slot vs opening hours.
+              Also drops candidates with garbage LLM-generated place names.
       Step 1: Sort by priority descending.
       Step 2: For each candidate try preferred slot then fallbacks.
               Fallback order is capacity-aware: roomiest slot tried first.
@@ -572,18 +657,19 @@ def schedule_candidates(
     PASS 2 — Relaxed (only for candidates that failed Pass 1):
       For each remaining unscheduled candidate, retry across ALL slots
       sorted by remaining_mins DESC — ignoring best_slot preference.
-      Opening hours check is BYPASSED (ignore_oh_check=True in
-      _fits_in_slot_v2) so a place with "6AM-6PM" hours can land in
-      an evening slot that starts at 16:30 even if is_open_for_slot
-      returned False due to a tight margin.
-      closed_on weekday check is still respected (hard skip).
-      Resulting stop is marked opening_hours_unverified=True so the
-      UI/frontend can show a ⚠️ warning to the user.
 
-    This eliminates the common case where a low-priority daytime place
-    (Chettiar Park, Vattakanal Falls, Golf Club) is left unscheduled
-    because morning/afternoon slots are full but evening/night slots
-    with plenty of headroom go unused.
+      Opening hours check is PARTIALLY RELAXED:
+        • _slot_has_any_overlap() is checked FIRST (hard skip if slot window
+          has zero overlap with open hours — e.g. night slot for a place
+          that closes at 18:00).
+        • If overlap exists, _fits_in_slot_v2 is called with
+          ignore_oh_check=True — only window fit (Check A) is enforced.
+        • closed_on weekday is still a hard skip.
+        • Result is marked opening_hours_unverified=True for UI warning.
+
+      This prevents nonsensical placements (Vattakanal Falls at 20:00
+      when it closes at 18:00) while still allowing borderline evening
+      placements (Golf Club 17:19-18:19 when it closes at 18:00).
     """
     candidates = validate_candidate_slots(candidates)
     sorted_cands = sorted(candidates, key=lambda c: -int(c.get("priority", 3)))
@@ -593,7 +679,6 @@ def schedule_candidates(
     day_slots = {d: [s["slot_id"] for s in slots if s["day"] == d] for d in days}
 
     scheduled:   list = []
-    unscheduled: list = []
 
     # ── PASS 1: strict scheduling ──────────────────────────────────────────────
     pass1_unscheduled: list = []
@@ -687,12 +772,20 @@ def schedule_candidates(
         f"[P1] done: {len(scheduled)} placed, {len(pass1_unscheduled)} sent to Pass 2"
     )
 
-    # ── PASS 2: relaxed scheduling (ignore best_slot + bypass OH check) ────────
-    # Only candidates that could not be placed in Pass 1 are retried here.
-    # Slots are tried purely by remaining capacity (roomiest first).
-    # Opening hours enforcement is bypassed — the stop is flagged as
-    # opening_hours_unverified=True so the UI can show a ⚠️ to the user.
-    # closed_on weekday check is still respected as a hard skip.
+    # ── PASS 2: relaxed scheduling (ignore best_slot + partial OH relaxation) ───
+    #
+    # For each candidate that failed Pass 1, retry across ALL slots by
+    # remaining capacity (roomiest first).
+    #
+    # KEY CHANGE vs previous version:
+    #   Before allowing a slot, call _slot_has_any_overlap() to check
+    #   whether the slot window has ANY overlap with the place's open hours.
+    #   If overlap = zero (e.g. night 20:00-21:30 vs close=18:00), hard-skip.
+    #   If overlap exists, proceed with ignore_oh_check=True (only window
+    #   fit Check A is enforced) and flag as opening_hours_unverified.
+    #
+    # This prevents absurd placements (waterfall at 20:00 when closed at 18:00)
+    # while still allowing borderline evening placements.
     pass2_unscheduled: list = []
 
     for cand in pass1_unscheduled:
@@ -714,23 +807,30 @@ def schedule_candidates(
                 slot.get("last_lat"), slot.get("last_lon"), cand_lat, cand_lon
             )
 
-            # Still hard-skip if closed on this weekday
+            # Hard-skip if closed on this weekday
             if closed_on and slot_date:
                 wd = slot_date.weekday()
-                closed_today = False
-                for day_str in closed_on:
-                    idx = _DAY_NAME_TO_IDX.get(day_str.strip().lower())
-                    if idx is not None and idx == wd:
-                        closed_today = True
-                        break
+                closed_today = any(
+                    _DAY_NAME_TO_IDX.get(d.strip().lower()) == wd
+                    for d in closed_on
+                )
                 if closed_today:
                     logger.debug(f"[P2] skip '{cand.get('place_name')}' in {slot_id}: closed today")
                     continue
 
-            # Relaxed: bypass is_open_for_slot — use slot start as clamped_start.
-            # _fits_in_slot_v2 with ignore_oh_check=True only checks window fit (Check A).
-            clamped_start = _hm_to_mins(slot["start_time"])
+            # Hard-skip if slot has ZERO overlap with open hours.
+            # This blocks night-slot placements for daytime-only attractions.
+            slot_s = _hm_to_mins(slot["start_time"])
+            slot_e = _hm_to_mins(slot["end_time"])
+            if not _slot_has_any_overlap(oh_str, slot_s, slot_e):
+                logger.debug(
+                    f"[P2] skip '{cand.get('place_name')}' in {slot_id}: "
+                    f"zero overlap with open hours"
+                )
+                continue
 
+            # Relaxed fit: bypass OH session check, only enforce window fit.
+            clamped_start = slot_s
             if not _fits_in_slot_v2(
                 slot, travel_mins, duration_hrs, clamped_start, oh_str,
                 ignore_oh_check=True
@@ -767,7 +867,7 @@ def schedule_candidates(
                 "nearby_food":              cand.get("nearby_food"),
                 "lat":                      cand_lat,
                 "lon":                      cand_lon,
-                # Always unverified in Pass 2 — opening hours were bypassed
+                # Always unverified in Pass 2 — OH enforcement was relaxed
                 "opening_hours_unverified": True,
                 "hours_conflict":           bool(cand.get("hours_conflict", False)),
             }
@@ -794,8 +894,8 @@ def schedule_candidates(
     unscheduled = pass2_unscheduled
     logger.info(
         f"[sched] final: {len(scheduled)} placed "
-        f"({len(scheduled) - len(pass1_unscheduled) + len(pass2_unscheduled)} P1 + "
-        f"{len(pass1_unscheduled) - len(pass2_unscheduled)} P2), "
+        f"(P1={len(scheduled) - len(pass1_unscheduled) + len(pass2_unscheduled)}, "
+        f"P2={len(pass1_unscheduled) - len(pass2_unscheduled)}), "
         f"{len(unscheduled)} truly unscheduled"
     )
     return scheduled, unscheduled
