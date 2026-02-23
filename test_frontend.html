@@ -119,7 +119,6 @@ input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2p
   <span class="chip" style="background:#7c3aed">Groq</span>
   <span class="chip" style="background:#0f766e">Llama 3.3 70B</span>
   <span class="chip" style="background:#0f4c75">Smart Scheduler</span>
-  <span class="chip" style="background:#065f46">Customize ✨</span>
 </header>
 <div class="status-bar">
   <div id="dot"></div>
@@ -128,11 +127,10 @@ input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2p
 </div>
 <div class="tabs">
   <div class="tab active" onclick="tab(0)">&#128197; Itinerary</div>
-  <div class="tab" onclick="tab(1)">&#127775; Customize</div>
-  <div class="tab" onclick="tab(2)">&#128205; Places</div>
-  <div class="tab" onclick="tab(3)">&#10024; Enrich</div>
-  <div class="tab" onclick="tab(4)">&#9925; Weather</div>
-  <div class="tab" onclick="tab(5)">&#128300; Raw</div>
+  <div class="tab" onclick="tab(1)">&#128205; Places</div>
+  <div class="tab" onclick="tab(2)">&#10024; Enrich</div>
+  <div class="tab" onclick="tab(3)">&#9925; Weather</div>
+  <div class="tab" onclick="tab(4)">&#128300; Raw</div>
 </div>
 <main>
 
@@ -181,139 +179,9 @@ input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2p
 </div>
 
 <!-- ═══════════════════════════════════════════════════ -->
-<!-- TAB 1 — CUSTOMIZE                                  -->
+<!-- TAB 1 — PLACES                                     -->
 <!-- ═══════════════════════════════════════════════════ -->
 <div class="panel" id="p1">
-
-  <!-- Header: User ID + Itinerary ID -->
-  <div class="card">
-    <h2>🔑 Auth & Target Itinerary</h2>
-    <div class="fr">
-      <div><label>Firebase User ID (X-User-Id) *</label><input id="c-uid" placeholder="e.g. abc123uid" value="test_user_01"/></div>
-      <div><label>Itinerary ID *</label><input id="c-iid" placeholder="Returned by Save → e.g. Xk92abc"/></div>
-    </div>
-    <p style="font-size:.76rem;color:#64748b;margin-top:4px">Generate + Save an itinerary in the Itinerary tab first, then paste the returned ID here.</p>
-  </div>
-
-  <!-- ── LOAD & PREVIEW ── -->
-  <div class="card">
-    <h2>📋 Load & Preview Itinerary</h2>
-    <button class="btn btn-outline" id="loadb" onclick="loadItinerary()"><span id="loadi">📋</span> Load Itinerary</button>
-    <div id="c-preview" style="margin-top:14px"></div>
-  </div>
-
-  <!-- ── SWAP STOP ── -->
-  <div class="card">
-    <h2>🔄 Swap a Stop</h2>
-    <div class="fr t">
-      <div><label>Day</label><input id="sw-day" type="number" value="1" min="1"/></div>
-      <div><label>Slot ID</label><input id="sw-slot" placeholder="e.g. day1_morning"/></div>
-      <div><label>Old Place Name *</label><input id="sw-old" placeholder="e.g. Marina Beach"/></div>
-    </div>
-    <p style="font-size:.76rem;color:#64748b;margin-bottom:10px">New Place to insert:</p>
-    <div class="fr">
-      <div><label>New Place Name *</label><input id="sw-name" placeholder="e.g. Elliot's Beach"/></div>
-      <div><label>Category</label><input id="sw-cat" placeholder="e.g. beach"/></div>
-    </div>
-    <div class="fr t">
-      <div><label>Duration (hrs)</label><input id="sw-dur" type="number" value="1.5" step="0.5"/></div>
-      <div><label>Best Slot</label><select id="sw-slot-pref"><option value="">Any</option><option value="morning">Morning</option><option value="afternoon">Afternoon</option><option value="evening">Evening</option><option value="night">Night</option></select></div>
-      <div><label>Entry Fee (₹)</label><input id="sw-fee" type="number" placeholder="0 = free"/></div>
-    </div>
-    <div class="fr s"><div><label>Opening Hours</label><input id="sw-oh" placeholder="e.g. 06:00-20:00"/></div></div>
-    <button class="btn btn-yellow" id="swapb" onclick="doSwap()"><span id="swapi">🔄</span> Swap Stop</button>
-  </div>
-
-  <!-- ── REMOVE STOP ── -->
-  <div class="card">
-    <h2>🗑️ Remove a Stop</h2>
-    <div class="fr t">
-      <div><label>Day</label><input id="rm-day" type="number" value="1" min="1"/></div>
-      <div><label>Slot ID</label><input id="rm-slot" placeholder="e.g. day1_morning"/></div>
-      <div><label>Place Name *</label><input id="rm-name" placeholder="e.g. Marina Beach"/></div>
-    </div>
-    <button class="btn btn-red" id="rmb" onclick="doRemove()"><span id="rmi">🗑️</span> Remove Stop</button>
-  </div>
-
-  <!-- ── ADD STOP ── -->
-  <div class="card">
-    <h2>➕ Add a New Stop</h2>
-    <div class="fr">
-      <div><label>Place Name *</label><input id="add-name" placeholder="e.g. Kapaleeshwarar Temple"/></div>
-      <div><label>Category</label><input id="add-cat" placeholder="e.g. temple"/></div>
-    </div>
-    <div class="fr q">
-      <div><label>Duration (hrs)</label><input id="add-dur" type="number" value="1.5" step="0.5"/></div>
-      <div><label>Preferred Slot</label><select id="add-slot"><option value="">Any</option><option value="morning">Morning</option><option value="afternoon">Afternoon</option><option value="evening">Evening</option><option value="night">Night</option></select></div>
-      <div><label>Preferred Day</label><input id="add-day" type="number" placeholder="optional" min="1"/></div>
-      <div><label>Entry Fee (₹)</label><input id="add-fee" type="number" placeholder="0 = free"/></div>
-    </div>
-    <div class="fr">
-      <div><label>Opening Hours</label><input id="add-oh" placeholder="e.g. 09:00-18:00"/></div>
-      <div><label>Why Must Visit</label><input id="add-why" placeholder="optional blurb"/></div>
-    </div>
-    <button class="btn btn-green" id="addb" onclick="doAdd()"><span id="addi">➕</span> Add Stop</button>
-  </div>
-
-  <!-- ── REORDER ── -->
-  <div class="card">
-    <h2>↕️ Reorder Day Stops</h2>
-    <div class="fr">
-      <div><label>Day to Reorder</label><input id="ro-day" type="number" value="1" min="1"/></div>
-      <div style="display:flex;align-items:flex-end"><button class="btn btn-outline" onclick="buildReorderList()">Build List</button></div>
-    </div>
-    <div id="ro-list" style="margin-top:12px"></div>
-    <button class="btn btn-purple" id="rob" onclick="doReorder()" style="margin-top:12px;display:none"><span id="roi">↕️</span> Apply Reorder</button>
-  </div>
-
-  <!-- ── PIN / UNPIN ── -->
-  <div class="card">
-    <h2>📌 Pin / Unpin a Stop</h2>
-    <div class="fr t">
-      <div><label>Day</label><input id="pin-day" type="number" value="1" min="1"/></div>
-      <div><label>Place Name *</label><input id="pin-name" placeholder="e.g. Kapaleeshwarar Temple"/></div>
-      <div><label>Action</label><select id="pin-action"><option value="true">📌 Pin</option><option value="false">🔓 Unpin</option></select></div>
-    </div>
-    <button class="btn btn-purple" id="pinb" onclick="doPin()"><span id="pini">📌</span> Apply</button>
-  </div>
-
-  <!-- ── SETTINGS PATCH ── -->
-  <div class="card">
-    <h2>⚙️ Patch Trip Settings</h2>
-    <p style="font-size:.76rem;color:#64748b;margin-bottom:12px">Only checked fields will be sent (exclude_unset).</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <label style="display:flex;align-items:center;gap:8px;background:#0f1117;border:1px solid #334155;border-radius:7px;padding:9px 12px;cursor:pointer">
-        <input type="checkbox" id="set-pace-chk" style="width:auto" onchange="toggleSet('pace')">
-        <span style="flex:1">Pace</span>
-        <select id="set-pace" disabled style="width:auto;min-width:100px"><option value="relaxed">Relaxed</option><option value="normal" selected>Normal</option><option value="fast">Fast</option></select>
-      </label>
-      <label style="display:flex;align-items:center;gap:8px;background:#0f1117;border:1px solid #334155;border-radius:7px;padding:9px 12px;cursor:pointer">
-        <input type="checkbox" id="set-budget-chk" style="width:auto" onchange="toggleSet('budget')">
-        <span style="flex:1">Budget</span>
-        <select id="set-budget" disabled style="width:auto;min-width:100px"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
-      </label>
-      <label style="display:flex;align-items:center;gap:8px;background:#0f1117;border:1px solid #334155;border-radius:7px;padding:9px 12px;cursor:pointer">
-        <input type="checkbox" id="set-crowd-chk" style="width:auto" onchange="toggleSet('crowd')">
-        <span style="flex:1">Avoid Crowded</span>
-        <select id="set-crowd" disabled style="width:auto;min-width:100px"><option value="true">Yes</option><option value="false">No</option></select>
-      </label>
-      <label style="display:flex;align-items:center;gap:8px;background:#0f1117;border:1px solid #334155;border-radius:7px;padding:9px 12px;cursor:pointer">
-        <input type="checkbox" id="set-access-chk" style="width:auto" onchange="toggleSet('access')">
-        <span style="flex:1">Accessibility</span>
-        <select id="set-access" disabled style="width:auto;min-width:100px"><option value="true">Yes</option><option value="false">No</option></select>
-      </label>
-    </div>
-    <button class="btn" id="setb" onclick="doSettings()" style="margin-top:14px"><span id="seti">⚙️</span> Patch Settings</button>
-  </div>
-
-  <!-- ── RESULT ── -->
-  <div id="cr"></div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════ -->
-<!-- TAB 2 — PLACES                                     -->
-<!-- ═══════════════════════════════════════════════════ -->
-<div class="panel" id="p2">
   <div class="card">
     <h2>&#128205; Search Places</h2>
     <div class="fr">
@@ -327,9 +195,9 @@ input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2p
 </div>
 
 <!-- ═══════════════════════════════════════════════════ -->
-<!-- TAB 3 — ENRICH                                     -->
+<!-- TAB 2 — ENRICH                                     -->
 <!-- ═══════════════════════════════════════════════════ -->
-<div class="panel" id="p3">
+<div class="panel" id="p2">
   <div class="card">
     <h2>&#10024; Enrich Place (Groq)</h2>
     <div class="fr">
@@ -342,9 +210,9 @@ input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2p
 </div>
 
 <!-- ═══════════════════════════════════════════════════ -->
-<!-- TAB 4 — WEATHER                                    -->
+<!-- TAB 3 — WEATHER                                    -->
 <!-- ═══════════════════════════════════════════════════ -->
-<div class="panel" id="p4">
+<div class="panel" id="p3">
   <div class="card">
     <h2>&#9925; Weather Forecast</h2>
     <div class="fr">
@@ -357,16 +225,16 @@ input:focus,select:focus,textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 2p
 </div>
 
 <!-- ═══════════════════════════════════════════════════ -->
-<!-- TAB 5 — RAW                                        -->
+<!-- TAB 4 — RAW                                        -->
 <!-- ═══════════════════════════════════════════════════ -->
-<div class="panel" id="p5">
+<div class="panel" id="p4">
   <div class="card">
     <h2>&#128300; Raw API</h2>
     <div class="fr">
       <div><label>Method</label><select id="rm"><option>GET</option><option selected>POST</option><option>PATCH</option></select></div>
       <div><label>Endpoint</label><input id="re" value="/api/itinerary/generate"/></div>
     </div>
-    <div class="fr s"><div><label>X-User-Id Header (for customize endpoints)</label><input id="raw-uid" placeholder="optional Firebase UID"/></div></div>
+    <div class="fr s"><div><label>X-User-Id Header (optional)</label><input id="raw-uid" placeholder="optional user id for scoped endpoints"/></div></div>
     <div class="fr s"><div><label>Body (JSON)</label><textarea id="rb" rows="8">{"destination":"Chennai","days":1,"budget":"medium","travel_type":"solo","mood":"cultural","interests":["temples","beach","food"]}</textarea></div></div>
     <button class="btn" id="rawb" onclick="rawReq()"><span id="rawi">🚀</span> Send</button>
   </div>
@@ -383,7 +251,7 @@ const SLOT_COLORS={morning:'fbbf24',afternoon:'34d399',evening:'f97316',night:'a
 // ── Global state ──────────────────────────────────────────────────
 let _lastItinerary=null   // raw response from /generate
 let _lastSavedId=null     // itinerary_id from /save
-let _loadedDoc=null       // loaded itinerary doc from Firestore
+let _loadedDoc=null       // loaded itinerary doc from Firestore (unused now)
 
 // ── Tabs ──────────────────────────────────────────────────────────
 function tab(i){
@@ -419,18 +287,6 @@ function rawToggle(id){
   if(el)el.style.display=el.style.display==='block'?'none':'block'
 }
 function showResult(elId,html){document.getElementById(elId).innerHTML=html}
-function custHdr(){
-  const uid=document.getElementById('c-uid').value.trim()
-  const iid=document.getElementById('c-iid').value.trim()
-  if(!uid)throw new Error('Enter Firebase User ID')
-  if(!iid)throw new Error('Enter Itinerary ID')
-  return {uid,iid}
-}
-function toggleSet(k){
-  const m={pace:'set-pace',budget:'set-budget',crowd:'set-crowd',access:'set-access'}
-  const chk=document.getElementById(m[k]+'-chk'),sel=document.getElementById(m[k])
-  if(sel)sel.disabled=!chk.checked
-}
 
 // ── GENERATE ITINERARY ────────────────────────────────────────────
 async function genItinerary(){
@@ -466,7 +322,7 @@ async function genItinerary(){
 
 async function saveItinerary(){
   if(!_lastItinerary){alert('Generate first');return}
-  const uid=document.getElementById('c-uid').value.trim()||'test_user_01'
+  const uid='test_user_01'
   setLoad('saveb','savei',true)
   try{
     const r=await fetch(`${BASE}/api/itinerary/save?user_id=${encodeURIComponent(uid)}`,{
@@ -477,12 +333,7 @@ async function saveItinerary(){
     const d=await r.json()
     if(!r.ok)throw d
     _lastSavedId=d.itinerary_id
-    document.getElementById('c-iid').value=_lastSavedId
     document.getElementById('saved-id').textContent=`✅ Saved: ${_lastSavedId}`
-    document.getElementById('c-uid').value=uid
-    // auto-switch to customize tab
-    tab(1)
-    loadItinerary()
   }catch(e){
     alert('Save failed: '+JSON.stringify(e.detail||e))
   }finally{setLoad('saveb','savei',false,'💾 Save to Firebase')}
@@ -563,246 +414,6 @@ function renderItinerary(d,ms,container='gr'){
   }
   html+=`<span class="raw-toggle" onclick="rawToggle('gen')">{ } Raw JSON</span><div class="raw-json" id="rj-gen">${JSON.stringify(d,null,2)}</div>`
   showResult(container,html)
-}
-
-// ── CUSTOMIZE: LOAD ───────────────────────────────────────────────
-async function loadItinerary(){
-  let uid,iid
-  try{{const h=custHdr();uid=h.uid;iid=h.iid}}catch(e){alert(e.message);return}
-  setLoad('loadb','loadi',true)
-  const t0=Date.now()
-  try{
-    const r=await fetch(`${BASE}/api/itinerary/${iid}`,{headers:{'X-User-Id':uid}})
-    const d=await r.json();const ms=Date.now()-t0
-    if(!r.ok)throw d
-    _loadedDoc=d.itinerary||d
-    showResult('cr','')
-    // Render a read-only preview in the customize tab
-    const previewData={meta:_loadedDoc.meta,itinerary:_loadedDoc.itinerary||[],slot_template:_loadedDoc.slot_template||[]}
-    let html=`<div class="id-banner">📄 Loaded: <strong>${iid}</strong></div>`
-    html+=renderStopsPreview(previewData)
-    showResult('c-preview',html)
-    // Auto-fill day inputs
-    const firstDay=(_loadedDoc.itinerary||[])[0]?.day||1
-    ;['sw-day','rm-day','ro-day','pin-day'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=firstDay})
-  }catch(e){
-    showResult('c-preview',meta(false,Date.now()-t0)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`)
-  }finally{setLoad('loadb','loadi',false,'📋 Load Itinerary')}
-}
-
-function renderStopsPreview(d){
-  const byDay={}
-  ;(d.itinerary||[]).forEach(s=>{(byDay[s.day]=byDay[s.day]||[]).push(s)})
-  let html=''
-  Object.entries(byDay).sort((a,b)=>+a[0]-+b[0]).forEach(([day,stops])=>{
-    html+=`<div class="day-section"><div class="day-header">🗓️ Day ${day}</div>`
-    stops.forEach(s=>{
-      const isPinned=s.pinned
-      const fee=s.entry_fee===0?'Free':(s.entry_fee?`₹${s.entry_fee}`:'')
-      html+=`<div class="stop-card${isPinned?' pinned-card':''}">
-        <div class="stop-time-col">
-          <div class="stop-time">${s.start_time||'--'}</div>
-          <div class="stop-end-time">${s.end_time||''}</div>
-          <div style="font-size:.65rem;color:#475569">${s.duration_hrs}h</div>
-        </div>
-        <div class="stop-body">
-          <div class="stop-name">
-            ${s.place_name}
-            ${isPinned?'<span class="badge pinned-badge">📌 pinned</span>':''}
-          </div>
-          <div class="stop-meta">
-            ${s.slot_id?`<span style="font-family:monospace;font-size:.71rem;color:#3b82f6">${s.slot_id}</span>`:''}
-            ${s.category?`<span>🏷️ ${s.category}</span>`:''}
-            ${s.opening_hours?`<span>⏰ ${s.opening_hours}</span>`:''}
-          </div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px">
-          <button class="btn-sm btn-yellow" onclick="prefillSwap(${day},'${s.slot_id}','${s.place_name.replace(/'/g,"\\'")}')">🔄 Swap</button>
-          <button class="btn-sm btn-red" onclick="prefillRemove(${day},'${s.slot_id}','${s.place_name.replace(/'/g,"\\'")}')">🗑️ Remove</button>
-          <button class="btn-sm ${isPinned?'btn-gray':'btn-purple'}" onclick="prefillPin(${day},'${s.place_name.replace(/'/g,"\\'")}',${ !isPinned })">📌 ${isPinned?'Unpin':'Pin'}</button>
-        </div>
-        ${fee?`<span class="stop-fee">${fee}</span>`:''}
-      </div>`
-    })
-    html+='</div>'
-  })
-  return html
-}
-
-// Quick-fill helpers from preview click
-function prefillSwap(day,slotId,name){
-  document.getElementById('sw-day').value=day
-  document.getElementById('sw-slot').value=slotId
-  document.getElementById('sw-old').value=name
-  document.getElementById('sw-name').focus()
-}
-function prefillRemove(day,slotId,name){
-  document.getElementById('rm-day').value=day
-  document.getElementById('rm-slot').value=slotId
-  document.getElementById('rm-name').value=name
-}
-function prefillPin(day,name,pin){
-  document.getElementById('pin-day').value=day
-  document.getElementById('pin-name').value=name
-  document.getElementById('pin-action').value=String(pin)
-}
-
-// ── CUSTOMIZE: SWAP ───────────────────────────────────────────────
-async function doSwap(){
-  let uid,iid
-  try{{const h=custHdr();uid=h.uid;iid=h.iid}}catch(e){alert(e.message);return}
-  const oldName=document.getElementById('sw-old').value.trim()
-  const newName=document.getElementById('sw-name').value.trim()
-  if(!oldName||!newName){alert('Fill old and new place names');return}
-  const body={
-    day:+document.getElementById('sw-day').value,
-    slot_id:document.getElementById('sw-slot').value.trim(),
-    old_place_name:oldName,
-    new_place:{
-      place_name:newName,
-      category:document.getElementById('sw-cat').value.trim()||null,
-      duration_hrs:+document.getElementById('sw-dur').value||1.5,
-      best_slot:document.getElementById('sw-slot-pref').value||null,
-      entry_fee:document.getElementById('sw-fee').value!==''?+document.getElementById('sw-fee').value:null,
-      opening_hours:document.getElementById('sw-oh').value.trim()||null
-    }
-  }
-  await custAction('swapb','swapi','🔄 Swap Stop',`/api/customize/${iid}/swap`,uid,body,'Swap')
-}
-
-// ── CUSTOMIZE: REMOVE ─────────────────────────────────────────────
-async function doRemove(){
-  let uid,iid
-  try{{const h=custHdr();uid=h.uid;iid=h.iid}}catch(e){alert(e.message);return}
-  const name=document.getElementById('rm-name').value.trim()
-  if(!name){alert('Enter place name to remove');return}
-  const body={
-    day:+document.getElementById('rm-day').value,
-    slot_id:document.getElementById('rm-slot').value.trim(),
-    place_name:name
-  }
-  await custAction('rmb','rmi','🗑️ Remove Stop',`/api/customize/${iid}/remove`,uid,body,'Remove')
-}
-
-// ── CUSTOMIZE: ADD ────────────────────────────────────────────────
-async function doAdd(){
-  let uid,iid
-  try{{const h=custHdr();uid=h.uid;iid=h.iid}}catch(e){alert(e.message);return}
-  const name=document.getElementById('add-name').value.trim()
-  if(!name){alert('Enter place name to add');return}
-  const prefDay=document.getElementById('add-day').value
-  const body={
-    new_place:{
-      place_name:name,
-      category:document.getElementById('add-cat').value.trim()||null,
-      duration_hrs:+document.getElementById('add-dur').value||1.5,
-      best_slot:document.getElementById('add-slot').value||null,
-      entry_fee:document.getElementById('add-fee').value!==''?+document.getElementById('add-fee').value:null,
-      opening_hours:document.getElementById('add-oh').value.trim()||null,
-      why_must_visit:document.getElementById('add-why').value.trim()||null
-    },
-    preferred_day:prefDay?+prefDay:null
-  }
-  await custAction('addb','addi','➕ Add Stop',`/api/customize/${iid}/add`,uid,body,'Add')
-}
-
-// ── CUSTOMIZE: REORDER ────────────────────────────────────────────
-function buildReorderList(){
-  if(!_loadedDoc){alert('Load an itinerary first');return}
-  const day=+document.getElementById('ro-day').value
-  const dayStops=(_loadedDoc.itinerary||[]).filter(s=>s.day===day)
-  if(!dayStops.length){alert(`No stops on day ${day}`);return}
-  let html='<ul class="reorder-list" id="ro-ul">'
-  dayStops.sort((a,b)=>a.start_time.localeCompare(b.start_time)).forEach((s,i)=>{
-    html+=`<li class="reorder-item" id="roi-${i}" data-name="${s.place_name.replace(/"/g,'&quot;')}">
-      <div class="reorder-arrows">
-        <button class="arr-btn" onclick="roMove(${i},-1)">▲</button>
-        <button class="arr-btn" onclick="roMove(${i},1)">▼</button>
-      </div>
-      <span>${s.place_name} ${s.pinned?'📌':''}</span>
-      <span style="font-size:.71rem;color:#3b82f6;font-family:monospace">${s.slot_name} ${s.start_time}</span>
-    </li>`
-  })
-  html+='</ul>'
-  document.getElementById('ro-list').innerHTML=html
-  document.getElementById('rob').style.display='inline-flex'
-}
-function roMove(idx,dir){
-  const ul=document.getElementById('ro-ul')
-  const items=[...ul.querySelectorAll('li')]
-  const target=idx+dir
-  if(target<0||target>=items.length)return
-  const ref=items[target]
-  if(dir===-1)ul.insertBefore(items[idx],ref)
-  else ul.insertBefore(ref,items[idx])
-}
-async function doReorder(){
-  let uid,iid
-  try{{const h=custHdr();uid=h.uid;iid=h.iid}}catch(e){alert(e.message);return}
-  const ul=document.getElementById('ro-ul')
-  if(!ul){alert('Build the list first');return}
-  const names=[...ul.querySelectorAll('li')].map(li=>li.dataset.name)
-  const body={day:+document.getElementById('ro-day').value,new_order_place_names:names}
-  await custAction('rob','roi','↕️ Apply Reorder',`/api/customize/${iid}/reorder`,uid,body,'Reorder')
-}
-
-// ── CUSTOMIZE: PIN ────────────────────────────────────────────────
-async function doPin(){
-  let uid,iid
-  try{{const h=custHdr();uid=h.uid;iid=h.iid}}catch(e){alert(e.message);return}
-  const name=document.getElementById('pin-name').value.trim()
-  if(!name){alert('Enter place name');return}
-  const body={
-    day:+document.getElementById('pin-day').value,
-    place_name:name,
-    pinned:document.getElementById('pin-action').value==='true'
-  }
-  await custAction('pinb','pini','📌 Apply',`/api/customize/${iid}/pin`,uid,body,'Pin')
-}
-
-// ── CUSTOMIZE: SETTINGS ───────────────────────────────────────────
-async function doSettings(){
-  let uid,iid
-  try{{const h=custHdr();uid=h.uid;iid=h.iid}}catch(e){alert(e.message);return}
-  const body={}
-  if(document.getElementById('set-pace-chk').checked)  body.pace=document.getElementById('set-pace').value
-  if(document.getElementById('set-budget-chk').checked) body.budget=document.getElementById('set-budget').value
-  if(document.getElementById('set-crowd-chk').checked)  body.avoid_crowded=document.getElementById('set-crowd').value==='true'
-  if(document.getElementById('set-access-chk').checked) body.accessibility_needs=document.getElementById('set-access').value==='true'
-  if(!Object.keys(body).length){alert('Check at least one setting');return}
-  await custAction('setb','seti','⚙️ Patch Settings',`/api/customize/${iid}/settings`,uid,body,'Settings','PATCH')
-}
-
-// ── CUSTOMIZE: SHARED ACTION ──────────────────────────────────────
-async function custAction(bid,iid_el,resetLabel,endpoint,uid,body,opName,method='POST'){
-  setLoad(bid,iid_el,true)
-  const t0=Date.now()
-  try{
-    const r=await fetch(BASE+endpoint,{
-      method,
-      headers:{'Content-Type':'application/json','X-User-Id':uid},
-      body:JSON.stringify(body)
-    })
-    const d=await r.json();const ms=Date.now()-t0
-    if(!r.ok)throw d
-    // Update loaded doc state
-    if(d.itinerary) _loadedDoc={..._loadedDoc,itinerary:d.itinerary}
-    if(d.meta)      _loadedDoc={..._loadedDoc,meta:d.meta}
-    // Re-render preview
-    if(d.itinerary){
-      const previewData={meta:_loadedDoc.meta,itinerary:_loadedDoc.itinerary,slot_template:_loadedDoc.slot_template||[]}
-      let ph=`<div class="id-banner">📄 Loaded: <strong>${document.getElementById('c-iid').value.trim()}</strong></div>`
-      ph+=renderStopsPreview(previewData)
-      showResult('c-preview',ph)
-    }
-    let rhtml=meta(true,ms,`<span class="badge info">${opName} ✅</span>`)
-    if(d.applied) rhtml+=`<div class="ok-banner">Applied: ${JSON.stringify(d.applied)}</div>`
-    if(d.placed_stop) rhtml+=`<div class="ok-banner">Placed: ${d.placed_stop.place_name} @ ${d.placed_stop.slot_id} ${d.placed_stop.start_time}</div>`
-    rhtml+=`<span class="raw-toggle" onclick="rawToggle('cr')">{ } Raw JSON</span><div class="raw-json" id="rj-cr">${JSON.stringify(d,null,2)}</div>`
-    showResult('cr',rhtml)
-  }catch(e){
-    showResult('cr',meta(false,Date.now()-t0,`<span class="badge err">${opName}</span>`)+`<div class="warn-banner">${JSON.stringify(e.detail||e,null,2)}</div>`)
-  }finally{setLoad(bid,iid_el,false,resetLabel)}
 }
 
 // ── SEARCH PLACES ─────────────────────────────────────────────────
