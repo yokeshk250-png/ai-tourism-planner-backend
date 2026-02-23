@@ -28,7 +28,7 @@ def get_client():
             "Free key: https://console.groq.com/keys"
         )
     _client = AsyncGroq(api_key=api_key)
-    logger.info(f"Groq ready \u2705  model={GROQ_MODEL}  key=...{api_key[-6:]}")
+    logger.info(f"Groq ready ✅  model={GROQ_MODEL}  key=...{api_key[-6:]}")
     return _client
 
 
@@ -166,44 +166,99 @@ Return ONLY this JSON:
 
 
 # ─────────────────────────────────────────────────────────────
-# Stage 3 — Conflict resolver: ask Groq for alternate places
+# Slot window reference (mirrors scheduler_service.py SLOT_TEMPLATE)
+# ─────────────────────────────────────────────────────────────
+_SLOT_WINDOWS = {
+    "morning":   ("09:00", "12:00"),
+    "afternoon": ("13:00", "16:00"),
+    "evening":   ("16:30", "19:30"),
+    "night":     ("20:00", "21:30"),
+}
+
+_SLOT_OH_HINT = {
+    "morning":   "open from at least 09:00",
+    "afternoon": "open from at least 13:00",
+    "evening":   "open until at least 18:30 (ideally 19:30+)",
+    "night":     "open until at least 21:00 (e.g. temples, forts, promenades, food streets)",
+}
+
+
+# ─────────────────────────────────────────────────────────────
+# Stage 5 — Conflict resolver: ask Groq for alternate places
 # ─────────────────────────────────────────────────────────────
 async def suggest_alternates_llm(
     destination: str,
     failed_place: dict,
     scheduled_places: list,
-    slot_name: str
+    slot_name: str,
+    free_slots: list[str] | None = None,
 ) -> list:
     """
-    When a candidate cannot be scheduled, ask Groq for shorter/alternative places.
-    Alternates must be real, specifically-named places in destination.
+    When a candidate cannot be scheduled, ask Groq for shorter/alternative places
+    that fit one of the currently FREE slots.
+
+    `free_slots` — ordered list of slot names that still have capacity
+    (e.g. ["evening", "night", "morning"]). When provided, the LLM is told
+    to target these slots specifically and to match their opening-hours
+    requirements. This prevents the classic failure where S5 alternates
+    all come back with '9am-5pm' OH while only evening/night slots are free.
     """
     scheduled_names = [s.get("place_name", "") for s in scheduled_places]
     max_dur = max(0.5, round(failed_place.get("duration_hrs", 1.5) - 0.5, 1))
+
+    # ── Build slot-awareness block ────────────────────────────────────────────
+    if free_slots:
+        target_slot = free_slots[0]   # best available slot to anchor the example
+        slot_lines = []
+        for fs in free_slots:
+            win = _SLOT_WINDOWS.get(fs, ("?", "?"))
+            hint = _SLOT_OH_HINT.get(fs, "open during this window")
+            slot_lines.append(f"  • {fs} ({win[0]}–{win[1]}): must be {hint}")
+        slot_block = (
+            f"AVAILABLE SLOTS WITH CAPACITY (suggest places that fit ONE of these):\n"
+            + "\n".join(slot_lines)
+            + "\n\n"
+            "CRITICAL — Opening hours MUST match the target slot:\n"
+            + "\n".join(
+                f"  • For {fs} slot → place must be open during {_SLOT_WINDOWS.get(fs,('?','?'))[0]}–"
+                f"{_SLOT_WINDOWS.get(fs,('?','?'))[1]}"
+                for fs in free_slots
+            )
+        )
+    else:
+        target_slot = slot_name
+        slot_block = (
+            f"Target slot: {slot_name} ({_SLOT_WINDOWS.get(slot_name, ('?','?'))[0]}–"
+            f"{_SLOT_WINDOWS.get(slot_name, ('?','?'))[1]})\n"
+            f"Place must be {_SLOT_OH_HINT.get(slot_name, 'open during this window')}."
+        )
 
     system_prompt = (
         "You are an expert Indian travel planner with deep local knowledge. "
         "Suggest real, specifically-named TOURIST ATTRACTIONS only — no restaurants, no meals. "
         "Every suggestion must physically exist in or within 50 km of the destination city. "
         "NEVER use generic names like 'Vishnu Temple' without the specific local temple name. "
+        "Pay close attention to opening hours — they MUST match the requested time slot. "
         "Return ONLY valid JSON."
     )
 
     user_prompt = f"""Building a trip itinerary for {destination}, India.
 
-The following place CANNOT be scheduled (timing conflict):
+The following place CANNOT be scheduled (timing/capacity conflict):
 - Place: {failed_place.get('place_name')}
 - Category: {failed_place.get('category', 'general')}
-- Failed slot: {slot_name}
+- Its opening hours: {failed_place.get('opening_hours', 'unknown')}
 
 Already scheduled (DO NOT suggest these):
 {', '.join(scheduled_names) if scheduled_names else 'None'}
 
+{slot_block}
+
 Suggest 3 alternative tourist attractions that:
-1. Same or similar category as "{failed_place.get('category', 'general')}".
-2. Shorter visit duration (≤ {max_dur} hours).
-3. Can fit in the {slot_name} time slot.
-4. NOT already in the scheduled list.
+1. Same or similar category as "{failed_place.get('category', 'general')}" (or any category if none fits).
+2. Visit duration ≤ {max_dur} hours.
+3. MUST fit in one of the available slots listed above — opening hours are CRITICAL.
+4. NOT already in the scheduled list above.
 5. MUST be real, specifically-named places in or within 50 km of {destination}.
 6. ATTRACTIONS ONLY — no restaurants, no hotels.
 
@@ -211,16 +266,16 @@ Return ONLY this JSON:
 {{
   "alternates": [
     {{
-      "place_name": "Goripalayam Dargah, Madurai",
-      "category": "heritage",
+      "place_name": "Example Place, {destination}",
+      "category": "viewpoint",
       "priority": 3,
       "duration_hrs": 0.5,
-      "best_slot": "{slot_name}",
-      "why_must_visit": "300-year-old dargah at the heart of Madurai",
-      "opening_hours": "Open 24hrs",
+      "best_slot": "{target_slot}",
+      "why_must_visit": "Short reason",
+      "opening_hours": "open hours matching the target slot",
       "closed_on": [],
       "entry_fee": 0,
-      "tip": "Dress modestly; serene even during busy hours"
+      "tip": "Short practical tip"
     }}
   ]
 }}"""
@@ -232,7 +287,10 @@ Return ONLY this JSON:
         )
         data = _parse_json(raw)
         alts = data.get("alternates", [])
-        logger.info(f"Groq: {len(alts)} alternates for '{failed_place.get('place_name')}'")
+        logger.info(
+            f"Groq: {len(alts)} alternates for '{failed_place.get('place_name')}' "
+            f"(free_slots={free_slots})"
+        )
         return alts
     except Exception as e:
         logger.warning(f"suggest_alternates_llm failed: {e}")
