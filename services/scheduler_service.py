@@ -15,7 +15,7 @@ SLOT_TEMPLATE = [
         "start": "09:00",
         "end": "12:00",
         "available_mins": 180,
-        "meal_gap_after": "12:00 \u2013 13:00 (\U0001f37d\ufe0f Lunch gap \u2014 add your own)"
+        "meal_gap_after": "12:00 – 13:00 (🍽️ Lunch gap — add your own)"
     },
     {
         "slot_name": "afternoon",
@@ -29,7 +29,7 @@ SLOT_TEMPLATE = [
         "start": "16:30",
         "end": "19:30",
         "available_mins": 180,
-        "meal_gap_after": "19:30 \u2013 20:00 (\U0001f37d\ufe0f Dinner gap \u2014 add your own)"
+        "meal_gap_after": "19:30 – 20:00 (🍽️ Dinner gap — add your own)"
     },
     {
         "slot_name": "night",
@@ -328,15 +328,15 @@ def validate_candidate_slots(candidates: list) -> list:
         )
 
         if slot_ok:
-            logger.debug(f"[validate] '{name}': best_slot='{pref}' \u2714\ufe0f")
+            logger.debug(f"[validate] '{name}': best_slot='{pref}' ✔️")
             continue
 
         corrected = _first_valid_slot(oh_str, dur_mins)
         if corrected and corrected != pref:
             sess_str = ", ".join(f"{_mins_to_time(o)}-{_mins_to_time(c%1440)}" for o, c in sessions)
             logger.info(
-                f"[validate] '{name}': best_slot '{pref}' \u2716 "
-                f"(hours: {sess_str}) \u2192 corrected to '{corrected}'"
+                f"[validate] '{name}': best_slot '{pref}' ✖ "
+                f"(hours: {sess_str}) → corrected to '{corrected}'"
             )
             cand["best_slot"] = corrected
         elif not corrected:
@@ -436,8 +436,12 @@ def _fits_in_slot_v2(
     duration_hrs: float,
     clamped_start: Optional[int],
     oh_str: Optional[str],
+    ignore_oh_check: bool = False,
 ) -> bool:
     """
+    Check whether the candidate physically fits in the slot given the
+    current cursor position.
+
     FIX 1 — Use last_end_mins cursor for fit check (not remaining_mins arithmetic).
     FIX 2 — Revalidate the *actual* computed interval against open sessions.
 
@@ -446,7 +450,11 @@ def _fits_in_slot_v2(
       B. computed interval lies within at least one open session
          (prevents scheduling past closing time when cursor moved forward)
 
-    Check B is skipped when opening hours are unparseable (lenient mode).
+    Check B is skipped when:
+      - opening hours are unparseable (lenient mode), OR
+      - ignore_oh_check=True (Pass 2 relaxed scheduling — best-effort
+        placement when all strict slots are full; output is flagged as
+        opening_hours_unverified so the UI can warn the user)
     """
     actual_t   = _actual_travel(slot, travel_mins)
     cursor     = slot["last_end_mins"]
@@ -463,7 +471,8 @@ def _fits_in_slot_v2(
         return False
 
     # B — must still be within an open session at actual computed time
-    if oh_str:
+    # Skipped in relaxed mode (ignore_oh_check=True) or unparseable hours.
+    if not ignore_oh_check and oh_str:
         sessions = _parse_sessions(oh_str)
         if sessions:  # only hard-check when hours are parseable
             actually_open = any(o <= start and end <= c for o, c in sessions)
@@ -514,8 +523,6 @@ def _build_fallback_order(
                 fallback_ids.append(sid)
 
     # Sort fallback by remaining capacity descending — try roomiest first.
-    # Only consider slots with enough raw remaining_mins for the duration
-    # (pre-filter before is_open_for_slot which does the real check).
     fallback_ids.sort(
         key=lambda sid: slot_map[sid]["remaining_mins"],
         reverse=True,
@@ -524,8 +531,24 @@ def _build_fallback_order(
     return preferred_ids + fallback_ids
 
 
+def _build_any_slot_order(slots: list, slot_map: dict, duration_mins: int) -> list:
+    """
+    Build a slot order for Pass 2 (relaxed): ALL slots sorted purely by
+    remaining_mins DESC, ignoring best_slot preference entirely.
+
+    Only includes slots that have at least duration_mins of remaining
+    capacity (raw check — actual fit is verified by _fits_in_slot_v2).
+    """
+    eligible = [
+        s["slot_id"] for s in slots
+        if s["remaining_mins"] >= duration_mins
+    ]
+    eligible.sort(key=lambda sid: slot_map[sid]["remaining_mins"], reverse=True)
+    return eligible
+
+
 # ─────────────────────────────────────────────────────────────
-# Main greedy scheduler
+# Main greedy scheduler — two-pass with conflict relaxation
 # ─────────────────────────────────────────────────────────────
 def schedule_candidates(
     candidates: list,
@@ -535,16 +558,32 @@ def schedule_candidates(
     day_dates: Optional[Dict[int, date]] = None,
 ) -> Tuple[list, list]:
     """
-    Greedy scheduler.
+    Two-pass greedy scheduler.
 
-    Step 0: validate_candidate_slots() — pre-correct best_slot vs opening hours.
-    Step 1: Sort by priority descending.
-    Step 2: For each candidate try preferred slot then fallbacks.
-            Fallback order is capacity-aware: roomiest slot tried first
-            (see _build_fallback_order).
-    Step 3: Slot-level opening hours feasibility check (is_open_for_slot).
-    Step 4: Actual-time fit check (_fits_in_slot_v2) — cursor-aware + OH revalidation.
-    Step 5: Compute and record times; update slot cursor (last_end_mins).
+    PASS 1 — Strict (original behaviour):
+      Step 0: validate_candidate_slots() — pre-correct best_slot vs opening hours.
+      Step 1: Sort by priority descending.
+      Step 2: For each candidate try preferred slot then fallbacks.
+              Fallback order is capacity-aware: roomiest slot tried first.
+      Step 3: Slot-level opening hours feasibility check (is_open_for_slot).
+      Step 4: Actual-time fit check (_fits_in_slot_v2) — cursor-aware + OH check.
+      Step 5: Compute and record times; update slot cursor.
+
+    PASS 2 — Relaxed (only for candidates that failed Pass 1):
+      For each remaining unscheduled candidate, retry across ALL slots
+      sorted by remaining_mins DESC — ignoring best_slot preference.
+      Opening hours check is BYPASSED (ignore_oh_check=True in
+      _fits_in_slot_v2) so a place with "6AM-6PM" hours can land in
+      an evening slot that starts at 16:30 even if is_open_for_slot
+      returned False due to a tight margin.
+      closed_on weekday check is still respected (hard skip).
+      Resulting stop is marked opening_hours_unverified=True so the
+      UI/frontend can show a ⚠️ warning to the user.
+
+    This eliminates the common case where a low-priority daytime place
+    (Chettiar Park, Vattakanal Falls, Golf Club) is left unscheduled
+    because morning/afternoon slots are full but evening/night slots
+    with plenty of headroom go unused.
     """
     candidates = validate_candidate_slots(candidates)
     sorted_cands = sorted(candidates, key=lambda c: -int(c.get("priority", 3)))
@@ -556,6 +595,9 @@ def schedule_candidates(
     scheduled:   list = []
     unscheduled: list = []
 
+    # ── PASS 1: strict scheduling ──────────────────────────────────────────────
+    pass1_unscheduled: list = []
+
     for cand in sorted_cands:
         placed        = False
         pref_slot     = cand.get("best_slot", "morning").lower()
@@ -566,7 +608,6 @@ def schedule_candidates(
         oh_str        = cand.get("opening_hours")
         closed_on     = cand.get("closed_on") or []
 
-        # Build capacity-aware slot ordering for this candidate
         slot_order = _build_fallback_order(
             slots, pref_slot, days, day_slots, slot_map, duration_mins
         )
@@ -579,33 +620,26 @@ def schedule_candidates(
                 slot.get("last_lat"), slot.get("last_lon"), cand_lat, cand_lon
             )
 
-            # Step 3: slot-level opening hours check
             open_ok, open_reason, clamped_start = is_open_for_slot(
                 oh_str, closed_on,
                 slot["start_time"], slot["end_time"],
                 duration_mins, slot_date
             )
             if open_ok is False:
-                logger.debug(
-                    f"[sched] skip '{cand.get('place_name')}' in {slot_id}: {open_reason}"
-                )
+                logger.debug(f"[P1] skip '{cand.get('place_name')}' in {slot_id}: {open_reason}")
                 continue
 
-            # Step 4: actual-time fit check (cursor-aware + OH revalidation)
             if not _fits_in_slot_v2(slot, travel_mins, duration_hrs, clamped_start, oh_str):
                 logger.debug(
-                    f"[sched] no fit '{cand.get('place_name')}' in {slot_id} "
+                    f"[P1] no fit '{cand.get('place_name')}' in {slot_id} "
                     f"(cursor={_mins_to_time(slot['last_end_mins'])}, "
                     f"travel={travel_mins}, dur={duration_mins})"
                 )
                 continue
 
-            # Step 5: compute and record
-            start_t, end_t = _compute_stop_times(
-                slot, travel_mins, duration_hrs, clamped_start
-            )
-            actual_t    = _actual_travel(slot, travel_mins)
-            end_mins    = _hm_to_mins(end_t)
+            start_t, end_t = _compute_stop_times(slot, travel_mins, duration_hrs, clamped_start)
+            actual_t = _actual_travel(slot, travel_mins)
+            end_mins = _hm_to_mins(end_t)
 
             stop = {
                 "day":                      day,
@@ -613,26 +647,25 @@ def schedule_candidates(
                 "slot_name":                slot["slot_name"],
                 "start_time":               start_t,
                 "end_time":                 end_t,
-                "travel_mins_from_prev":     actual_t,
+                "travel_mins_from_prev":    actual_t,
                 "place_name":               cand.get("place_name", "Unknown"),
                 "category":                 cand.get("category"),
                 "priority":                 int(cand.get("priority", 3)),
-                "why_must_visit":            cand.get("why_must_visit"),
-                "is_alternate":              bool(cand.get("is_alternate", False)),
-                "opening_hours":             oh_str,
-                "closed_on":                 closed_on or None,
-                "duration_hrs":              duration_hrs,
-                "entry_fee":                 cand.get("entry_fee"),
-                "entry_fee_foreign":         cand.get("entry_fee_foreign"),
-                "tip":                       cand.get("tip"),
-                "nearby_food":               cand.get("nearby_food"),
-                "lat":                       cand_lat,
-                "lon":                       cand_lon,
-                "opening_hours_unverified":  open_ok is None,
-                "hours_conflict":            bool(cand.get("hours_conflict", False)),
+                "why_must_visit":           cand.get("why_must_visit"),
+                "is_alternate":             bool(cand.get("is_alternate", False)),
+                "opening_hours":            oh_str,
+                "closed_on":                closed_on or None,
+                "duration_hrs":             duration_hrs,
+                "entry_fee":                cand.get("entry_fee"),
+                "entry_fee_foreign":        cand.get("entry_fee_foreign"),
+                "tip":                      cand.get("tip"),
+                "nearby_food":              cand.get("nearby_food"),
+                "lat":                      cand_lat,
+                "lon":                      cand_lon,
+                "opening_hours_unverified": open_ok is None,
+                "hours_conflict":           bool(cand.get("hours_conflict", False)),
             }
 
-            # Update slot cursor: last_end_mins = actual end of this stop
             slot["last_end_mins"] = end_mins
             slot["remaining_mins"] = _hm_to_mins(slot["end_time"]) - end_mins
             slot["stops"].append(stop)
@@ -642,13 +675,127 @@ def schedule_candidates(
 
             scheduled.append(stop)
             placed = True
-            flag = "\u2705" if open_ok else "\u26a0\ufe0f"
-            logger.debug(f"[sched] {flag} '{cand.get('place_name')}' \u2192 {slot_id} @ {start_t}")
+            flag = "✅" if open_ok else "⚠️"
+            logger.debug(f"[P1] {flag} '{cand.get('place_name')}' → {slot_id} @ {start_t}")
             break
 
         if not placed:
-            logger.info(f"[sched] unscheduled: '{cand.get('place_name')}' (dur={duration_hrs}h)")
-            unscheduled.append(cand)
+            logger.info(f"[P1] unscheduled: '{cand.get('place_name')}' (dur={duration_hrs}h)")
+            pass1_unscheduled.append(cand)
 
-    logger.info(f"[sched] done: {len(scheduled)} placed, {len(unscheduled)} unscheduled")
+    logger.info(
+        f"[P1] done: {len(scheduled)} placed, {len(pass1_unscheduled)} sent to Pass 2"
+    )
+
+    # ── PASS 2: relaxed scheduling (ignore best_slot + bypass OH check) ────────
+    # Only candidates that could not be placed in Pass 1 are retried here.
+    # Slots are tried purely by remaining capacity (roomiest first).
+    # Opening hours enforcement is bypassed — the stop is flagged as
+    # opening_hours_unverified=True so the UI can show a ⚠️ to the user.
+    # closed_on weekday check is still respected as a hard skip.
+    pass2_unscheduled: list = []
+
+    for cand in pass1_unscheduled:
+        placed        = False
+        cand_lat      = cand.get("lat")
+        cand_lon      = cand.get("lon")
+        duration_hrs  = float(cand.get("duration_hrs", 1.0))
+        duration_mins = int(duration_hrs * 60)
+        oh_str        = cand.get("opening_hours")
+        closed_on     = cand.get("closed_on") or []
+
+        slot_order = _build_any_slot_order(slots, slot_map, duration_mins)
+
+        for slot_id in slot_order:
+            slot      = slot_map[slot_id]
+            day       = slot["day"]
+            slot_date = day_dates.get(day) if day_dates else None
+            travel_mins = estimate_travel_minutes(
+                slot.get("last_lat"), slot.get("last_lon"), cand_lat, cand_lon
+            )
+
+            # Still hard-skip if closed on this weekday
+            if closed_on and slot_date:
+                wd = slot_date.weekday()
+                closed_today = False
+                for day_str in closed_on:
+                    idx = _DAY_NAME_TO_IDX.get(day_str.strip().lower())
+                    if idx is not None and idx == wd:
+                        closed_today = True
+                        break
+                if closed_today:
+                    logger.debug(f"[P2] skip '{cand.get('place_name')}' in {slot_id}: closed today")
+                    continue
+
+            # Relaxed: bypass is_open_for_slot — use slot start as clamped_start.
+            # _fits_in_slot_v2 with ignore_oh_check=True only checks window fit (Check A).
+            clamped_start = _hm_to_mins(slot["start_time"])
+
+            if not _fits_in_slot_v2(
+                slot, travel_mins, duration_hrs, clamped_start, oh_str,
+                ignore_oh_check=True
+            ):
+                logger.debug(
+                    f"[P2] no fit '{cand.get('place_name')}' in {slot_id} "
+                    f"(cursor={_mins_to_time(slot['last_end_mins'])}, "
+                    f"travel={travel_mins}, dur={duration_mins})"
+                )
+                continue
+
+            start_t, end_t = _compute_stop_times(slot, travel_mins, duration_hrs, clamped_start)
+            actual_t = _actual_travel(slot, travel_mins)
+            end_mins = _hm_to_mins(end_t)
+
+            stop = {
+                "day":                      day,
+                "slot_id":                  slot_id,
+                "slot_name":                slot["slot_name"],
+                "start_time":               start_t,
+                "end_time":                 end_t,
+                "travel_mins_from_prev":    actual_t,
+                "place_name":               cand.get("place_name", "Unknown"),
+                "category":                 cand.get("category"),
+                "priority":                 int(cand.get("priority", 3)),
+                "why_must_visit":           cand.get("why_must_visit"),
+                "is_alternate":             bool(cand.get("is_alternate", False)),
+                "opening_hours":            oh_str,
+                "closed_on":                closed_on or None,
+                "duration_hrs":             duration_hrs,
+                "entry_fee":                cand.get("entry_fee"),
+                "entry_fee_foreign":        cand.get("entry_fee_foreign"),
+                "tip":                      cand.get("tip"),
+                "nearby_food":              cand.get("nearby_food"),
+                "lat":                      cand_lat,
+                "lon":                      cand_lon,
+                # Always unverified in Pass 2 — opening hours were bypassed
+                "opening_hours_unverified": True,
+                "hours_conflict":           bool(cand.get("hours_conflict", False)),
+            }
+
+            slot["last_end_mins"] = end_mins
+            slot["remaining_mins"] = _hm_to_mins(slot["end_time"]) - end_mins
+            slot["stops"].append(stop)
+            if cand_lat and cand_lon:
+                slot["last_lat"] = cand_lat
+                slot["last_lon"] = cand_lon
+
+            scheduled.append(stop)
+            placed = True
+            logger.info(
+                f"[P2] ⚠️ '{cand.get('place_name')}' → {slot_id} @ {start_t} "
+                f"(relaxed — OH bypassed, unverified flag set)"
+            )
+            break
+
+        if not placed:
+            logger.info(f"[P2] truly unscheduled: '{cand.get('place_name')}' (dur={duration_hrs}h)")
+            pass2_unscheduled.append(cand)
+
+    unscheduled = pass2_unscheduled
+    logger.info(
+        f"[sched] final: {len(scheduled)} placed "
+        f"({len(scheduled) - len(pass1_unscheduled) + len(pass2_unscheduled)} P1 + "
+        f"{len(pass1_unscheduled) - len(pass2_unscheduled)} P2), "
+        f"{len(unscheduled)} truly unscheduled"
+    )
     return scheduled, unscheduled
